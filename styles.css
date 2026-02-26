@@ -241,3 +241,26 @@ td {
   margin: 0.3rem 0 0;
   padding-left: 1.2rem;
 }
+
+.daily-people-list {
+  margin-top: 0.9rem;
+}
+
+.daily-people-list ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.daily-people-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.muted-inline {
+  color: var(--muted);
+  margin: 0;
+}
