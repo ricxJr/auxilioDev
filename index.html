@@ -24,6 +24,7 @@
           <button id="importCsvBtn" data-action="import-csv" type="button">Importar CSV</button>
           <button id="exportCsvBtn" data-action="export-csv" type="button">Exportar CSV</button>
         </div>
+        <div class="csv-conflicts" data-role="csv-conflicts" hidden></div>
       </header>
 
       <section class="section card" id="occurrenceSection" data-section="occurrence-form">
@@ -34,6 +35,7 @@
               Pessoa
               <input id="personName" name="personName" data-field="person-name" required />
             </label>
+            <p class="id-preview" data-role="person-id-preview">Próximo personId: P0001</p>
             <label>
               Tipo
               <select id="occurrenceType" name="occurrenceType" data-field="occurrence-type" required>
