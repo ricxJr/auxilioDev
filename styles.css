@@ -136,9 +136,40 @@ textarea:invalid:not(:focus) {
   font-size: 1.5rem;
 }
 
+
+.chart-controls {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.chart-controls .action-secondary {
+  border: 1px solid #cdd8eb;
+}
+
+.chart-controls .action-secondary.is-active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
 .chart-scroll {
   overflow-x: auto;
-  padding-bottom: 0.25rem;
+  position: relative;
+  padding-bottom: 0.35rem;
+}
+
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #111827;
+  color: #fff;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 20%);
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .table-wrap {

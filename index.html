@@ -89,8 +89,17 @@
 
       <section class="section card" id="chartSection" data-section="chart">
         <h2>Ocorrências por Pessoa</h2>
+        <div class="chart-controls" role="group" aria-label="Modo do gráfico">
+          <button type="button" class="action-secondary is-active" data-action="chart-mode" data-mode="selected-day">
+            Dia selecionado
+          </button>
+          <button type="button" class="action-secondary" data-action="chart-mode" data-mode="history">
+            Histórico completo
+          </button>
+        </div>
         <div class="chart-scroll" data-role="chart-scroll">
           <canvas id="occurrenceChart" data-role="occurrence-chart" width="900" height="260"></canvas>
+          <div class="chart-tooltip" data-role="chart-tooltip" hidden></div>
         </div>
       </section>
 

@@ -30,6 +30,10 @@ const state = {
     fileHandle: null,
     conflicts: [],
   },
+  chart: {
+    mode: "selected-day",
+    bars: [],
+  },
 };
 
 const ui = {};
@@ -40,6 +44,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindCsvActions();
   bindOccurrenceForm();
   bindFilters();
+  bindChartInteractions();
   bindTableActions();
   await tryReconnectCsvFile();
   renderAll();
@@ -67,6 +72,9 @@ function cacheElements() {
   ui.kpiTopType = document.querySelector('[data-kpi="top-type"]');
 
   ui.chartCanvas = document.querySelector('[data-role="occurrence-chart"]');
+  ui.chartScroll = document.querySelector('[data-role="chart-scroll"]');
+  ui.chartTooltip = document.querySelector('[data-role="chart-tooltip"]');
+  ui.chartModeButtons = [...document.querySelectorAll('[data-action="chart-mode"]')];
 
   ui.filterPerson = document.querySelector('[data-filter="person"]');
   ui.filterNameSearch = document.querySelector('[data-filter="name-search"]');
@@ -200,22 +208,26 @@ function bindFilters() {
   ui.filterPerson.addEventListener("change", (event) => {
     state.filters.personId = event.target.value;
     renderTable();
+    renderChart();
   });
 
   ui.filterNameSearch.addEventListener("input", (event) => {
     state.filters.personNameSearch = normalizeName(event.target.value);
     renderTable();
+    renderChart();
   });
 
   ui.filterDate.addEventListener("change", (event) => {
     state.filters.date = event.target.value;
     renderDashboard();
     renderTable();
+    renderChart();
   });
 
   ui.sortOrder.addEventListener("change", (event) => {
     state.filters.sort = event.target.value;
     renderTable();
+    renderChart();
   });
 
   ui.clearFiltersBtn.addEventListener("click", () => {
@@ -226,7 +238,46 @@ function bindFilters() {
     ui.sortOrder.value = "date-desc";
     renderDashboard();
     renderTable();
+    renderChart();
   });
+}
+
+function bindChartInteractions() {
+  ui.chartModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.mode;
+      if (!mode || state.chart.mode === mode) return;
+      state.chart.mode = mode;
+      renderChart();
+    });
+  });
+
+  ui.chartCanvas.addEventListener("mousemove", (event) => {
+    const rect = ui.chartCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const hoveredBar = state.chart.bars.find(
+      (bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height,
+    );
+
+    if (!hoveredBar) {
+      hideChartTooltip();
+      return;
+    }
+
+    const scrollLeft = ui.chartScroll.scrollLeft;
+    ui.chartTooltip.hidden = false;
+    ui.chartTooltip.textContent = `${hoveredBar.label} · ${formatDurationClock(hoveredBar.totalMinutes)}`;
+    ui.chartTooltip.style.left = `${hoveredBar.x + hoveredBar.width / 2 - ui.chartTooltip.offsetWidth / 2 + scrollLeft}px`;
+    ui.chartTooltip.style.top = `${Math.max(8, hoveredBar.y - 34)}px`;
+  });
+
+  ui.chartCanvas.addEventListener("mouseleave", hideChartTooltip);
+  ui.chartScroll.addEventListener("scroll", hideChartTooltip);
+}
+
+function hideChartTooltip() {
+  ui.chartTooltip.hidden = true;
 }
 
 function bindTableActions() {
@@ -413,6 +464,16 @@ function aggregateByPerson(occurrences, mode = "history") {
   return ordered;
 }
 
+
+function getChartScopedOccurrences() {
+  return state.occurrences.filter((entry) => {
+    const byPerson = !state.filters.personId || entry.personId === state.filters.personId;
+    const byNameSearch =
+      !state.filters.personNameSearch || normalizeName(entry.personName).includes(state.filters.personNameSearch);
+    return byPerson && byNameSearch;
+  });
+}
+
 function renderPersonFilterOptions() {
   const people = [...state.people.values()].sort((a, b) => a.name.localeCompare(b.name));
   ui.filterPerson.innerHTML = ['<option value="">Todas</option>', ...people.map((person) => `<option value="${escapeHtml(person.personId)}">${escapeHtml(person.name)} (${escapeHtml(person.personId)})</option>`)].join("");
@@ -482,42 +543,101 @@ function renderDashboard() {
 }
 
 function renderChart() {
+  const modeConfig =
+    state.chart.mode === "selected-day"
+      ? { type: "selected-day", selectedDate: state.filters.date || new Date().toISOString().slice(0, 10) }
+      : { type: "history" };
+  const data = aggregateByPerson(getChartScopedOccurrences(), modeConfig);
+
+  ui.chartModeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mode === state.chart.mode);
+  });
+
   const ctx = ui.chartCanvas.getContext("2d");
-  const width = ui.chartCanvas.width;
   const height = ui.chartCanvas.height;
 
-  ctx.clearRect(0, 0, width, height);
-
-  const counts = state.occurrences.reduce((acc, entry) => {
-    acc[entry.personName] = (acc[entry.personName] || 0) + 1;
-    return acc;
-  }, {});
-
-  const data = Object.entries(counts).slice(0, 5);
   if (!data.length) {
+    ui.chartCanvas.width = 900;
+    ctx.clearRect(0, 0, ui.chartCanvas.width, height);
     ctx.fillStyle = "#6b7280";
     ctx.font = "16px sans-serif";
     ctx.fillText("Sem dados para o gráfico.", 20, 40);
+    state.chart.bars = [];
+    hideChartTooltip();
     return;
   }
 
-  const max = Math.max(...data.map(([, value]) => value), 1);
-  const barWidth = 140;
-  const gap = 24;
+  const margin = { top: 20, right: 20, bottom: 70, left: 72 };
+  const barWidth = 72;
+  const gap = 20;
+  const innerWidth = data.length * (barWidth + gap);
+  const canvasWidth = Math.max(900, margin.left + margin.right + innerWidth);
+  const plotHeight = height - margin.top - margin.bottom;
 
-  data.forEach(([label, value], index) => {
-    const x = 40 + index * (barWidth + gap);
-    const barHeight = Math.round((value / max) * 150);
-    const y = height - 50 - barHeight;
+  ui.chartCanvas.width = canvasWidth;
+  ctx.clearRect(0, 0, canvasWidth, height);
+
+  const maxMinutes = Math.max(...data.map((item) => item.totalMinutes), 1);
+  const yTicks = 5;
+
+  ctx.strokeStyle = "#dbe2ea";
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "12px sans-serif";
+
+  for (let i = 0; i <= yTicks; i += 1) {
+    const ratio = i / yTicks;
+    const y = margin.top + plotHeight - ratio * plotHeight;
+    const value = Math.round(maxMinutes * ratio);
+    ctx.beginPath();
+    ctx.moveTo(margin.left, y);
+    ctx.lineTo(canvasWidth - margin.right, y);
+    ctx.stroke();
+    ctx.fillText(formatAxisDuration(value), 8, y + 4);
+  }
+
+  ctx.strokeStyle = "#94a3b8";
+  ctx.beginPath();
+  ctx.moveTo(margin.left, margin.top);
+  ctx.lineTo(margin.left, height - margin.bottom);
+  ctx.lineTo(canvasWidth - margin.right, height - margin.bottom);
+  ctx.stroke();
+
+  state.chart.bars = data.map((person, index) => {
+    const x = margin.left + index * (barWidth + gap);
+    const barHeight = (person.totalMinutes / maxMinutes) * plotHeight;
+    const y = height - margin.bottom - barHeight;
+    const label = `${person.personName}(${person.personId})`;
 
     ctx.fillStyle = "#2f6df6";
     ctx.fillRect(x, y, barWidth, barHeight);
 
+    ctx.save();
+    ctx.translate(x + barWidth / 2, height - margin.bottom + 12);
+    ctx.rotate(-Math.PI / 4);
     ctx.fillStyle = "#1f2937";
-    ctx.font = "14px sans-serif";
-    ctx.fillText(label.slice(0, 12), x, height - 24);
-    ctx.fillText(String(value), x + 4, y - 8);
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(label.slice(0, 24), 0, 0);
+    ctx.restore();
+
+    return { x, y, width: barWidth, height: barHeight, label, totalMinutes: person.totalMinutes };
   });
+
+  hideChartTooltip();
+}
+
+function formatAxisDuration(totalMinutes) {
+  if (totalMinutes >= 60) {
+    const hours = totalMinutes / 60;
+    return `${hours.toFixed(hours >= 10 ? 0 : 1)}h`;
+  }
+  return `${Math.round(totalMinutes)}m`;
+}
+
+function formatDurationClock(durationMinutes) {
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function renderTable() {
