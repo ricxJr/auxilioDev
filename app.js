@@ -1,6 +1,20 @@
+const CSV_HEADERS = [
+  "occurrenceId",
+  "personId",
+  "personName",
+  "date",
+  "durationMinutes",
+  "createdAt",
+  "updatedAt",
+];
+
+const HANDLE_DB_NAME = "occurrence-csv-db";
+const HANDLE_STORE = "handles";
+const HANDLE_KEY = "csv-file-handle";
+
 const state = {
-  people: new Map(), // personId -> { id, name, normalizedName }
-  normalizedNameToPersonId: new Map(), // normalizedName -> personId
+  people: new Map(),
+  normalizedNameToPersonId: new Map(),
   occurrences: [],
   editingOccurrenceId: null,
   filters: {
@@ -14,41 +28,20 @@ const state = {
     fileHandle: null,
     conflicts: [],
   },
-  editingOccurrenceId: null,
-  personSequence: 1,
 };
 
 const ui = {};
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   cacheElements();
-  setupFallbackBanner();
+  setupFallbackMode();
   bindCsvActions();
   bindOccurrenceForm();
   bindFilters();
   bindTableActions();
+  await tryReconnectCsvFile();
   renderAll();
 });
-
-function normalizeName(name) {
-  return String(name || "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function generateOccurrenceId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `occ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function isOccurrenceId(value) {
-  return typeof value === "string" && value.trim().length > 0;
-}
 
 function cacheElements() {
   ui.csvStatus = document.querySelector('[data-role="csv-status"]');
@@ -62,7 +55,6 @@ function cacheElements() {
   ui.personName = document.querySelector('[data-field="person-name"]');
   ui.personPreview = document.querySelector('[data-role="person-preview"]');
   ui.personIdPreview = document.querySelector('[data-role="person-id-preview"]');
-  ui.occurrenceType = document.querySelector('[data-field="occurrence-type"]');
   ui.occurrenceDate = document.querySelector('[data-field="occurrence-date"]');
   ui.occurrenceDuration = document.querySelector('[data-field="occurrence-duration"]');
   ui.saveButton = document.querySelector('[data-action="save-occurrence"]');
@@ -82,9 +74,12 @@ function cacheElements() {
   ui.toastContainer = document.querySelector('[data-role="toast-container"]');
 }
 
-function setupFallbackBanner() {
-  const hasFsApi = typeof window.showOpenFilePicker === "function";
-  if (!hasFsApi) {
+function supportsFsAccessApi() {
+  return typeof window.showOpenFilePicker === "function" && typeof window.showSaveFilePicker === "function";
+}
+
+function setupFallbackMode() {
+  if (!supportsFsAccessApi()) {
     state.csv.mode = "fallback";
     ui.fallbackWarning.hidden = false;
     ui.connectCsvBtn.disabled = true;
@@ -92,23 +87,16 @@ function setupFallbackBanner() {
 }
 
 function bindCsvActions() {
-  ui.connectCsvBtn.addEventListener("click", () => {
-    state.csv.connected = true;
-    state.csv.mode = "connected";
-    state.csv.filename = "ocorrencias.csv";
-    showToast("CSV conectado com sucesso", "success");
-    renderCsvStatus();
-  });
+  ui.connectCsvBtn.addEventListener("click", connectCsvFile);
 
   ui.importCsvBtn.addEventListener("click", async () => {
     try {
-      const csvText = await readCsvInput();
-      if (!csvText) {
+      const csvText = await readCsvFromInput();
+      if (!csvText.trim()) {
         showToast("Nenhum conteúdo de CSV informado.", "error");
         return;
       }
-      const parsed = parseCsv(csvText);
-      importFromParsedCsv(parsed);
+      loadCsvText(csvText);
       showToast("CSV importado com sucesso.", "success");
       renderAll();
     } catch (error) {
@@ -116,28 +104,38 @@ function bindCsvActions() {
     }
   });
 
-  ui.exportCsvBtn.addEventListener("click", () => {
-    const csv = toCsv();
+  ui.exportCsvBtn.addEventListener("click", async () => {
+    const csv = serializeCSV(state.occurrences);
+    if (state.csv.connected && state.csv.fileHandle) {
+      try {
+        await writeCsvToConnectedFile(csv);
+        showToast("CSV salvo no arquivo conectado.", "success");
+      } catch (error) {
+        showToast(`Falha ao salvar no arquivo conectado: ${error.message}`, "error");
+      }
+      return;
+    }
+
     downloadCsv(csv, state.csv.filename || "ocorrencias.csv");
-    showToast("CSV exportado.", "success");
+    showToast("CSV exportado por download.", "success");
   });
 }
 
 function bindOccurrenceForm() {
-  ui.personName.addEventListener("input", renderPersonPreview);
+  ui.personName.addEventListener("input", () => {
+    renderPersonPreview();
+    renderPersonIdPreview();
+  });
 
   ui.cancelEditButton.addEventListener("click", () => {
     clearFormMode();
     showToast("Edição cancelada.");
-  ui.personName.addEventListener("input", () => {
-    renderPersonIdPreview();
   });
 
-  ui.occurrenceForm.addEventListener("submit", (event) => {
+  ui.occurrenceForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const durationResult = parseDurationToMinutes(ui.occurrenceDuration.value);
-
     const requiredFields = [
       { input: ui.personName, valid: Boolean(ui.personName.value.trim()) },
       { input: ui.occurrenceDate, valid: Boolean(ui.occurrenceDate.value.trim()) },
@@ -172,46 +170,23 @@ function bindOccurrenceForm() {
       occurrence.durationMinutes = durationResult.value;
       occurrence.updatedAt = now;
 
-      showToast("Ocorrência atualizada.", "success");
       clearFormMode();
-      renderAll();
+      await persistOccurrencesWithFeedback("Ocorrência atualizada.");
       return;
     }
 
-    const occurrence = {
-      occurrenceId: crypto.randomUUID(),
+    state.occurrences.unshift({
+      occurrenceId: generateOccurrenceId(),
       personId: person.personId,
       personName: person.name,
-    const person = ensurePerson(ui.personName.value);
-    const baseOccurrence = {
-      id: state.editingOccurrenceId || generateOccurrenceId(),
-      personId: person.id,
-      person: person.name,
-      type: ui.occurrenceType.value,
       date: ui.occurrenceDate.value,
       durationMinutes: durationResult.value,
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
-    state.occurrences.unshift(occurrence);
-
-    ui.occurrenceForm.reset();
-    ui.personPreview.textContent = "";
-    requiredFields.forEach(({ input }) => input.classList.remove("is-valid", "is-invalid"));
-    if (state.editingOccurrenceId) {
-      const idx = state.occurrences.findIndex((item) => item.id === state.editingOccurrenceId);
-      if (idx !== -1) {
-        state.occurrences[idx] = { ...state.occurrences[idx], ...baseOccurrence };
-      }
-      showToast("Ocorrência atualizada.", "success");
-    } else {
-      state.occurrences.unshift(baseOccurrence);
-      showToast("Ocorrência registrada.", "success");
-    }
-
-    resetOccurrenceForm();
-    renderAll();
+    clearFormMode();
+    await persistOccurrencesWithFeedback("Ocorrência registrada.");
   });
 }
 
@@ -235,23 +210,17 @@ function bindFilters() {
 }
 
 function bindTableActions() {
-  ui.occurrencesBody.addEventListener("click", (event) => {
+  ui.occurrencesBody.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("button[data-action]");
     if (!actionButton) return;
 
     const rowId = actionButton.dataset.id;
-    if (actionButton.dataset.action === "delete-occurrence") {
-      const shouldDelete = window.confirm("Deseja realmente excluir esta ocorrência?");
-      if (!shouldDelete) return;
 
+    if (actionButton.dataset.action === "delete-occurrence") {
+      if (!window.confirm("Deseja realmente excluir esta ocorrência?")) return;
       state.occurrences = state.occurrences.filter((item) => item.occurrenceId !== rowId);
-      if (state.editingOccurrenceId === rowId) {
-        clearFormMode();
-      }
-      state.occurrences = state.occurrences.filter((item) => item.id !== rowId);
-      if (state.editingOccurrenceId === rowId) resetOccurrenceForm();
-      showToast("Ocorrência removida.", "success");
-      renderAll();
+      if (state.editingOccurrenceId === rowId) clearFormMode();
+      await persistOccurrencesWithFeedback("Ocorrência removida.");
       return;
     }
 
@@ -266,85 +235,98 @@ function bindTableActions() {
       ui.saveButton.textContent = "Salvar edição";
       ui.cancelEditButton.hidden = false;
       renderPersonPreview();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      state.occurrences.unshift({ ...item, id: generateOccurrenceId(), createdAt: new Date().toISOString() });
-      showToast("Ocorrência duplicada.", "success");
-      renderAll();
-      return;
-    }
-
-    if (actionButton.dataset.action === "edit-occurrence") {
-      const item = state.occurrences.find((entry) => entry.id === rowId);
-      if (!item) return;
-      state.editingOccurrenceId = rowId;
-      ui.personName.value = item.person;
-      ui.occurrenceType.value = item.type;
-      ui.occurrenceDate.value = item.date;
-      ui.occurrenceNotes.value = item.notes;
       renderPersonIdPreview();
-      showToast("Editando ocorrência selecionada.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
 }
 
-function ensurePerson(rawName, forcedPersonId = null) {
-  const normalizedName = normalizeName(rawName);
-  if (!normalizedName) return null;
+function normalizeName(name) {
+  return String(name || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
-  const existingPersonId = state.normalizedNameToPersonId.get(normalizedName);
-  if (existingPersonId) {
-    const person = state.people.get(existingPersonId);
-    if (person && person.name !== rawName.trim()) {
-      state.people.set(existingPersonId, { ...person, name: rawName.trim() });
-      syncOccurrencePersonName(existingPersonId, rawName.trim());
-      return state.people.get(existingPersonId);
-    }
-    return person;
+function generateOccurrenceId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `occ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getOrCreatePerson(name) {
+  const normalized = normalizeName(name);
+  const existingId = state.normalizedNameToPersonId.get(normalized);
+  if (existingId) {
+    const existing = state.people.get(existingId);
+    if (existing && existing.name !== name) existing.name = name;
+    return existing;
   }
 
-  const personId = forcedPersonId || getNextPersonId();
   const person = {
-    id: personId,
-    name: rawName.trim(),
-    normalizedName,
+    personId: getNextPersonId(),
+    name,
+    normalizedName: normalized,
   };
 
-  state.people.set(personId, person);
-  state.normalizedNameToPersonId.set(normalizedName, personId);
+  state.people.set(person.personId, person);
+  state.normalizedNameToPersonId.set(normalized, person.personId);
   return person;
 }
 
 function getNextPersonId() {
-  const max = [...state.people.keys()].reduce((acc, personId) => {
-    const n = Number(String(personId).replace(/^P/i, ""));
+  const max = [...state.people.keys()].reduce((acc, id) => {
+    const n = Number(String(id).replace(/^P/i, ""));
     return Number.isFinite(n) ? Math.max(acc, n) : acc;
   }, 0);
   return `P${String(max + 1).padStart(4, "0")}`;
 }
 
 function getPreviewPersonId(name) {
-  const normalizedName = normalizeName(name);
-  if (!normalizedName) return getNextPersonId();
-  return state.normalizedNameToPersonId.get(normalizedName) || getNextPersonId();
+  const normalized = normalizeName(name);
+  if (!normalized) return getNextPersonId();
+  return state.normalizedNameToPersonId.get(normalized) || getNextPersonId();
 }
 
 function renderPersonIdPreview() {
   ui.personIdPreview.textContent = `Próximo personId: ${getPreviewPersonId(ui.personName.value)}`;
 }
 
-function resetOccurrenceForm() {
-  const values = [ui.personName, ui.occurrenceType, ui.occurrenceDate];
+function renderPersonPreview() {
+  const rawName = ui.personName.value.trim();
+  if (!rawName) {
+    ui.personPreview.textContent = "";
+    return;
+  }
+
+  const normalized = normalizeName(rawName);
+  const personId = state.normalizedNameToPersonId.get(normalized);
+  if (personId) {
+    ui.personPreview.textContent = `Pessoa existente: ${personId}`;
+    return;
+  }
+
+  ui.personPreview.textContent = `Nova pessoa será criada com ID: ${getNextPersonId()}`;
+}
+
+function clearFormMode() {
   state.editingOccurrenceId = null;
   ui.occurrenceForm.reset();
-  values.forEach((input) => input.classList.remove("is-valid", "is-invalid"));
+  ui.saveButton.textContent = "Salvar ocorrência";
+  ui.cancelEditButton.hidden = true;
+  [ui.personName, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
+    input.classList.remove("is-valid", "is-invalid"),
+  );
+  renderPersonPreview();
   renderPersonIdPreview();
 }
 
 function getFilteredOccurrences() {
   return state.occurrences.filter((entry) => {
-    const byPerson = !state.filters.person || entry.personName.toLowerCase().includes(state.filters.person);
-    const byPerson = !state.filters.person || normalizeName(entry.person).includes(state.filters.person);
-    const byType = !state.filters.type || entry.type === state.filters.type;
+    const byPerson = !state.filters.person || normalizeName(entry.personName).includes(state.filters.person);
     const byDate = !state.filters.date || entry.date === state.filters.date;
     return byPerson && byDate;
   });
@@ -388,11 +370,6 @@ function renderDashboard() {
 
   ui.kpiTotalToday.textContent = String(todayEntries.length);
   ui.kpiUniquePeople.textContent = String(new Set(todayEntries.map((entry) => entry.personId)).size);
-
-  const countByType = todayEntries.reduce((acc, entry) => {
-    acc[entry.type] = (acc[entry.type] || 0) + 1;
-    return acc;
-  }, {});
 
   const totalDuration = todayEntries.reduce((acc, entry) => acc + entry.durationMinutes, 0);
   ui.kpiTopType.textContent = todayEntries.length ? `${Math.round(totalDuration / todayEntries.length)} min méd.` : "-";
@@ -447,19 +424,13 @@ function renderTable() {
   ui.occurrencesBody.innerHTML = rows
     .map(
       (entry) => `
-      <tr data-id="${entry.occurrenceId}">
-      <tr data-id="${entry.id}">
-        <td>${escapeHtml(entry.person)} <small>(${escapeHtml(entry.personId)})</small></td>
-        <td>${escapeHtml(entry.type)}</td>
+      <tr>
         <td>${escapeHtml(entry.date)}</td>
         <td>${escapeHtml(entry.personName)} <small>(${escapeHtml(entry.personId)})</small></td>
         <td>${escapeHtml(formatDurationLabel(entry.durationMinutes))}</td>
         <td class="actions-cell">
           <button class="action-secondary" data-action="edit-occurrence" data-id="${entry.occurrenceId}" type="button">Editar</button>
           <button class="action-danger" data-action="delete-occurrence" data-id="${entry.occurrenceId}" type="button">Excluir</button>
-          <button class="action-secondary" data-action="edit-occurrence" data-id="${entry.id}" type="button">Editar</button>
-          <button class="action-secondary" data-action="duplicate-occurrence" data-id="${entry.id}" type="button">Duplicar</button>
-          <button class="action-danger" data-action="delete-occurrence" data-id="${entry.id}" type="button">Excluir</button>
         </td>
       </tr>
     `,
@@ -467,64 +438,9 @@ function renderTable() {
     .join("");
 }
 
-function renderPersonPreview() {
-  const rawName = ui.personName.value.trim();
-  if (!rawName) {
-    ui.personPreview.textContent = "";
-    return;
-  }
-
-  const key = rawName.toLowerCase();
-  const existing = state.people.get(key);
-  if (existing) {
-    ui.personPreview.textContent = `Pessoa existente: ${existing.personId}`;
-    return;
-  }
-
-  ui.personPreview.textContent = `Nova pessoa será criada com ID: ${getNextPersonId()}`;
-}
-
-function getOrCreatePerson(name) {
-  const key = name.toLowerCase();
-  const existing = state.people.get(key);
-  if (existing) {
-    if (existing.name !== name) {
-      existing.name = name;
-    }
-    return existing;
-  }
-
-  const person = {
-    personId: getNextPersonId(),
-    name,
-  };
-
-  state.people.set(key, person);
-  state.personSequence += 1;
-  return person;
-}
-
-function getNextPersonId() {
-  return `P${String(state.personSequence).padStart(4, "0")}`;
-}
-
-function clearFormMode() {
-  state.editingOccurrenceId = null;
-  ui.occurrenceForm.reset();
-  ui.personPreview.textContent = "";
-  ui.saveButton.textContent = "Salvar ocorrência";
-  ui.cancelEditButton.hidden = true;
-  [ui.personName, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
-    input.classList.remove("is-valid", "is-invalid"),
-  );
-}
-
 function parseDurationToMinutes(rawValue) {
   const input = rawValue.trim().toLowerCase();
-
-  if (!input) {
-    return { valid: false, error: "Informe a duração." };
-  }
+  if (!input) return { valid: false, error: "Informe a duração." };
 
   if (/^\d+$/.test(input)) {
     const minutes = Number(input);
@@ -557,10 +473,7 @@ function parseDurationToMinutes(rawValue) {
     return { valid: true, value: hours * 60 + minutes };
   }
 
-  return {
-    valid: false,
-    error: "Formato inválido. Use 90, 1:30 ou 1h 30m.",
-  };
+  return { valid: false, error: "Formato inválido. Use 90, 1:30 ou 1h 30m." };
 }
 
 function formatDurationLabel(durationMinutes) {
@@ -575,31 +488,209 @@ function formatDurationInput(durationMinutes) {
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
-function showToast(message, variant = "default") {
-  const toast = document.createElement("div");
-  toast.className = `toast ${variant === "default" ? "" : variant}`.trim();
-  toast.textContent = message;
-  ui.toastContainer.appendChild(toast);
+function parseCSV(text) {
+  const rows = parseCsvRows(text);
+  if (!rows.length) return [];
 
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
-}
-
-async function readCsvInput() {
-  if (typeof window.showOpenFilePicker === "function") {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }],
-      multiple: false,
-    });
-    const file = await handle.getFile();
-    state.csv.connected = true;
-    state.csv.mode = "connected";
-    state.csv.filename = file.name;
-    state.csv.fileHandle = handle;
-    return file.text();
+  const [header, ...body] = rows;
+  const normalizedHeader = header.map((item) => item.trim());
+  if (normalizedHeader.join(",") !== CSV_HEADERS.join(",")) {
+    throw new Error("Cabeçalho CSV inválido.");
   }
 
+  return body
+    .filter((columns) => columns.some((value) => value !== ""))
+    .map((columns) => ({
+      occurrenceId: columns[0] || generateOccurrenceId(),
+      personId: columns[1] || "",
+      personName: columns[2] || "",
+      date: columns[3] || "",
+      durationMinutes: Number(columns[4] || 0),
+      createdAt: columns[5] || new Date().toISOString(),
+      updatedAt: columns[6] || new Date().toISOString(),
+    }));
+}
+
+function serializeCSV(occurrences) {
+  const escapeCsv = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const sortAsc = (a, b) => {
+    const dateDiff = String(a.date || "").localeCompare(String(b.date || ""));
+    if (dateDiff !== 0) return dateDiff;
+    return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+  };
+
+  const ordered = [...occurrences].sort(sortAsc);
+  const body = ordered.map((item) =>
+    [
+      item.occurrenceId,
+      item.personId,
+      item.personName,
+      item.date,
+      Number(item.durationMinutes || 0),
+      item.createdAt,
+      item.updatedAt,
+    ]
+      .map(escapeCsv)
+      .join(","),
+  );
+
+  return [CSV_HEADERS.join(","), ...body].join("\n");
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        value += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") i += 1;
+      row.push(value);
+      rows.push(row);
+      row = [];
+      value = "";
+      continue;
+    }
+
+    value += char;
+  }
+
+  if (value.length || row.length) {
+    row.push(value);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function loadCsvText(csvText) {
+  const parsed = parseCSV(csvText);
+  state.occurrences = parsed;
+
+  state.people = new Map();
+  state.normalizedNameToPersonId = new Map();
+  parsed.forEach((item) => {
+    if (!item.personId || !item.personName) return;
+    const normalized = normalizeName(item.personName);
+    state.people.set(item.personId, {
+      personId: item.personId,
+      name: item.personName,
+      normalizedName: normalized,
+    });
+    state.normalizedNameToPersonId.set(normalized, item.personId);
+  });
+
+  state.csv.conflicts = [];
+  clearFormMode();
+}
+
+async function connectCsvFile() {
+  if (!supportsFsAccessApi()) return;
+
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: "ocorrencias.csv",
+      types: [{ description: "Arquivo CSV", accept: { "text/csv": [".csv"] } }],
+    });
+
+    state.csv.fileHandle = handle;
+    state.csv.connected = true;
+    state.csv.mode = "connected";
+    state.csv.filename = handle.name;
+
+    await saveFileHandle(handle);
+    const file = await handle.getFile();
+    const content = await file.text();
+
+    if (content.trim()) loadCsvText(content);
+
+    renderAll();
+    showToast("CSV conectado com sucesso.", "success");
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    showToast(`Falha ao conectar CSV: ${error.message}`, "error");
+  }
+}
+
+async function tryReconnectCsvFile() {
+  if (!supportsFsAccessApi()) return;
+
+  try {
+    const handle = await readFileHandle();
+    if (!handle) return;
+
+    const permission = await ensureReadWritePermission(handle);
+    if (permission !== "granted") return;
+
+    state.csv.fileHandle = handle;
+    state.csv.connected = true;
+    state.csv.mode = "connected";
+    state.csv.filename = handle.name;
+
+    const file = await handle.getFile();
+    const text = await file.text();
+    if (text.trim()) loadCsvText(text);
+    showToast("CSV reconectado automaticamente.", "success");
+  } catch {
+    // reconexão é best-effort
+  }
+}
+
+async function persistOccurrencesWithFeedback(successMessage) {
+  try {
+    await persistOccurrences();
+    renderAll();
+    showToast(successMessage, "success");
+  } catch (error) {
+    renderAll();
+    showToast(`Dados atualizados localmente, mas falhou ao salvar CSV: ${error.message}`, "error");
+  }
+}
+
+async function persistOccurrences() {
+  if (!(state.csv.connected && state.csv.fileHandle)) return;
+  const csv = serializeCSV(state.occurrences);
+  await writeCsvToConnectedFile(csv);
+}
+
+async function writeCsvToConnectedFile(content) {
+  const permission = await ensureReadWritePermission(state.csv.fileHandle);
+  if (permission !== "granted") {
+    throw new Error("Permissão de escrita negada.");
+  }
+  const writable = await state.csv.fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function ensureReadWritePermission(handle) {
+  const options = { mode: "readwrite" };
+  const current = await handle.queryPermission(options);
+  if (current === "granted") return current;
+  return handle.requestPermission(options);
+}
+
+function readCsvFromInput() {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -611,93 +702,10 @@ async function readCsvInput() {
         return;
       }
       state.csv.filename = file.name;
-      file
-        .text()
-        .then(resolve)
-        .catch(reject);
+      file.text().then(resolve).catch(reject);
     });
     input.click();
   });
-}
-
-function parseCsv(text) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (!lines.length) return [];
-  const [headerLine, ...rows] = lines;
-  const headers = headerLine.split(",").map((item) => item.trim());
-
-  return rows.map((row) => {
-    const values = row.split(",").map((item) => item.trim());
-    return headers.reduce((acc, header, index) => {
-      acc[header] = values[index] || "";
-      return acc;
-    }, {});
-  });
-}
-
-function importFromParsedCsv(rows) {
-  const nextPeople = new Map();
-  const nextNormalizedNameToPersonId = new Map();
-  const conflicts = [];
-
-  const importedOccurrences = rows
-    .map((row, index) => {
-      const rowNumber = index + 2;
-      const rawName = row.person || row.personName || "";
-      const normalizedName = normalizeName(rawName);
-      if (!normalizedName) return null;
-
-      const rowPersonId = row.personId?.trim() || null;
-      const occurrencePersonId = rowPersonId || `P${String(index + 1).padStart(4, "0")}`;
-
-      const personIdByName = nextNormalizedNameToPersonId.get(normalizedName);
-      if (personIdByName && personIdByName !== occurrencePersonId) {
-        conflicts.push(`Linha ${rowNumber}: nome "${rawName}" possui IDs conflitantes (${personIdByName} vs ${occurrencePersonId}).`);
-      }
-
-      const existingById = nextPeople.get(occurrencePersonId);
-      if (existingById && existingById.normalizedName !== normalizedName) {
-        conflicts.push(
-          `Linha ${rowNumber}: personId ${occurrencePersonId} já vinculado a "${existingById.name}", incompatível com "${rawName}".`,
-        );
-      }
-
-      const personId = personIdByName || occurrencePersonId;
-      nextPeople.set(personId, { id: personId, name: rawName.trim(), normalizedName });
-      nextNormalizedNameToPersonId.set(normalizedName, personId);
-
-      const occurrenceId = isOccurrenceId(row.id) ? row.id : generateOccurrenceId();
-      return {
-        id: occurrenceId,
-        personId,
-        person: rawName.trim(),
-        type: row.type || "",
-        date: row.date || "",
-        notes: row.notes || "",
-        createdAt: row.createdAt || new Date().toISOString(),
-      };
-    })
-    .filter(Boolean);
-
-  state.people = nextPeople;
-  state.normalizedNameToPersonId = nextNormalizedNameToPersonId;
-  state.occurrences = importedOccurrences;
-  state.csv.conflicts = conflicts;
-  resetOccurrenceForm();
-}
-
-function toCsv() {
-  const headers = ["id", "personId", "person", "type", "date", "notes", "createdAt"];
-  const rows = state.occurrences.map((entry) =>
-    [entry.id, entry.personId, entry.person, entry.type, entry.date, entry.notes, entry.createdAt]
-      .map((value) => `"${String(value || "").replaceAll('"', '""')}"`)
-      .join(","),
-  );
-  return [headers.join(","), ...rows].join("\n");
 }
 
 function downloadCsv(content, filename) {
@@ -712,10 +720,15 @@ function downloadCsv(content, filename) {
   URL.revokeObjectURL(url);
 }
 
-function syncOccurrencePersonName(personId, personName) {
-  state.occurrences = state.occurrences.map((occurrence) =>
-    occurrence.personId === personId ? { ...occurrence, person: personName } : occurrence,
-  );
+function showToast(message, variant = "default") {
+  const toast = document.createElement("div");
+  toast.className = `toast ${variant === "default" ? "" : variant}`.trim();
+  toast.textContent = message;
+  ui.toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 3000);
 }
 
 function escapeHtml(value) {
@@ -725,4 +738,46 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function openHandleDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB indisponível"));
+      return;
+    }
+
+    const request = window.indexedDB.open(HANDLE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(HANDLE_STORE)) {
+        db.createObjectStore(HANDLE_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Falha ao abrir IndexedDB"));
+  });
+}
+
+async function saveFileHandle(handle) {
+  const db = await openHandleDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readwrite");
+    tx.objectStore(HANDLE_STORE).put(handle, HANDLE_KEY);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error || new Error("Falha ao salvar handle"));
+  });
+  db.close();
+}
+
+async function readFileHandle() {
+  const db = await openHandleDb();
+  const handle = await new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, "readonly");
+    const request = tx.objectStore(HANDLE_STORE).get(HANDLE_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Falha ao ler handle"));
+  });
+  db.close();
+  return handle;
 }
