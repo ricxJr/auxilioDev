@@ -5,7 +5,6 @@ const state = {
   editingOccurrenceId: null,
   filters: {
     person: "",
-    type: "",
     date: "",
   },
   csv: {
@@ -15,6 +14,8 @@ const state = {
     fileHandle: null,
     conflicts: [],
   },
+  editingOccurrenceId: null,
+  personSequence: 1,
 };
 
 const ui = {};
@@ -59,10 +60,13 @@ function cacheElements() {
 
   ui.occurrenceForm = document.querySelector('[data-role="occurrence-form"]');
   ui.personName = document.querySelector('[data-field="person-name"]');
+  ui.personPreview = document.querySelector('[data-role="person-preview"]');
   ui.personIdPreview = document.querySelector('[data-role="person-id-preview"]');
   ui.occurrenceType = document.querySelector('[data-field="occurrence-type"]');
   ui.occurrenceDate = document.querySelector('[data-field="occurrence-date"]');
-  ui.occurrenceNotes = document.querySelector('[data-field="occurrence-notes"]');
+  ui.occurrenceDuration = document.querySelector('[data-field="occurrence-duration"]');
+  ui.saveButton = document.querySelector('[data-action="save-occurrence"]');
+  ui.cancelEditButton = document.querySelector('[data-action="cancel-edit"]');
 
   ui.kpiTotalToday = document.querySelector('[data-kpi="total-today"]');
   ui.kpiUniquePeople = document.querySelector('[data-kpi="unique-people"]');
@@ -71,7 +75,6 @@ function cacheElements() {
   ui.chartCanvas = document.querySelector('[data-role="occurrence-chart"]');
 
   ui.filterPerson = document.querySelector('[data-filter="person"]');
-  ui.filterType = document.querySelector('[data-filter="type"]');
   ui.filterDate = document.querySelector('[data-filter="date"]');
   ui.clearFiltersBtn = document.querySelector('[data-action="clear-filters"]');
 
@@ -121,6 +124,11 @@ function bindCsvActions() {
 }
 
 function bindOccurrenceForm() {
+  ui.personName.addEventListener("input", renderPersonPreview);
+
+  ui.cancelEditButton.addEventListener("click", () => {
+    clearFormMode();
+    showToast("Edição cancelada.");
   ui.personName.addEventListener("input", () => {
     renderPersonIdPreview();
   });
@@ -128,19 +136,52 @@ function bindOccurrenceForm() {
   ui.occurrenceForm.addEventListener("submit", (event) => {
     event.preventDefault();
 
-    const values = [ui.personName, ui.occurrenceType, ui.occurrenceDate];
-    const hasInvalid = values.some((input) => {
-      const invalid = !input.value.trim();
-      input.classList.toggle("is-invalid", invalid);
-      input.classList.toggle("is-valid", !invalid);
-      return invalid;
+    const durationResult = parseDurationToMinutes(ui.occurrenceDuration.value);
+
+    const requiredFields = [
+      { input: ui.personName, valid: Boolean(ui.personName.value.trim()) },
+      { input: ui.occurrenceDate, valid: Boolean(ui.occurrenceDate.value.trim()) },
+      { input: ui.occurrenceDuration, valid: durationResult.valid },
+    ];
+
+    const hasInvalid = requiredFields.some(({ input, valid }) => {
+      input.classList.toggle("is-invalid", !valid);
+      input.classList.toggle("is-valid", valid);
+      return !valid;
     });
 
     if (hasInvalid) {
-      showToast("Preencha os campos obrigatórios.", "error");
+      showToast(durationResult.valid ? "Preencha os campos obrigatórios." : durationResult.error, "error");
       return;
     }
 
+    const now = new Date().toISOString();
+    const person = getOrCreatePerson(ui.personName.value.trim());
+
+    if (state.editingOccurrenceId) {
+      const occurrence = state.occurrences.find((item) => item.occurrenceId === state.editingOccurrenceId);
+      if (!occurrence) {
+        clearFormMode();
+        showToast("Ocorrência para edição não encontrada.", "error");
+        return;
+      }
+
+      occurrence.personId = person.personId;
+      occurrence.personName = person.name;
+      occurrence.date = ui.occurrenceDate.value;
+      occurrence.durationMinutes = durationResult.value;
+      occurrence.updatedAt = now;
+
+      showToast("Ocorrência atualizada.", "success");
+      clearFormMode();
+      renderAll();
+      return;
+    }
+
+    const occurrence = {
+      occurrenceId: crypto.randomUUID(),
+      personId: person.personId,
+      personName: person.name,
     const person = ensurePerson(ui.personName.value);
     const baseOccurrence = {
       id: state.editingOccurrenceId || generateOccurrenceId(),
@@ -148,10 +189,16 @@ function bindOccurrenceForm() {
       person: person.name,
       type: ui.occurrenceType.value,
       date: ui.occurrenceDate.value,
-      notes: ui.occurrenceNotes.value.trim(),
-      createdAt: new Date().toISOString(),
+      durationMinutes: durationResult.value,
+      createdAt: now,
+      updatedAt: now,
     };
 
+    state.occurrences.unshift(occurrence);
+
+    ui.occurrenceForm.reset();
+    ui.personPreview.textContent = "";
+    requiredFields.forEach(({ input }) => input.classList.remove("is-valid", "is-invalid"));
     if (state.editingOccurrenceId) {
       const idx = state.occurrences.findIndex((item) => item.id === state.editingOccurrenceId);
       if (idx !== -1) {
@@ -174,20 +221,14 @@ function bindFilters() {
     renderTable();
   });
 
-  ui.filterType.addEventListener("change", (event) => {
-    state.filters.type = event.target.value;
-    renderTable();
-  });
-
   ui.filterDate.addEventListener("change", (event) => {
     state.filters.date = event.target.value;
     renderTable();
   });
 
   ui.clearFiltersBtn.addEventListener("click", () => {
-    state.filters = { person: "", type: "", date: "" };
+    state.filters = { person: "", date: "" };
     ui.filterPerson.value = "";
-    ui.filterType.value = "";
     ui.filterDate.value = "";
     renderTable();
   });
@@ -200,6 +241,13 @@ function bindTableActions() {
 
     const rowId = actionButton.dataset.id;
     if (actionButton.dataset.action === "delete-occurrence") {
+      const shouldDelete = window.confirm("Deseja realmente excluir esta ocorrência?");
+      if (!shouldDelete) return;
+
+      state.occurrences = state.occurrences.filter((item) => item.occurrenceId !== rowId);
+      if (state.editingOccurrenceId === rowId) {
+        clearFormMode();
+      }
       state.occurrences = state.occurrences.filter((item) => item.id !== rowId);
       if (state.editingOccurrenceId === rowId) resetOccurrenceForm();
       showToast("Ocorrência removida.", "success");
@@ -207,9 +255,18 @@ function bindTableActions() {
       return;
     }
 
-    if (actionButton.dataset.action === "duplicate-occurrence") {
-      const item = state.occurrences.find((entry) => entry.id === rowId);
+    if (actionButton.dataset.action === "edit-occurrence") {
+      const item = state.occurrences.find((entry) => entry.occurrenceId === rowId);
       if (!item) return;
+
+      state.editingOccurrenceId = item.occurrenceId;
+      ui.personName.value = item.personName;
+      ui.occurrenceDate.value = item.date;
+      ui.occurrenceDuration.value = formatDurationInput(item.durationMinutes);
+      ui.saveButton.textContent = "Salvar edição";
+      ui.cancelEditButton.hidden = false;
+      renderPersonPreview();
+      window.scrollTo({ top: 0, behavior: "smooth" });
       state.occurrences.unshift({ ...item, id: generateOccurrenceId(), createdAt: new Date().toISOString() });
       showToast("Ocorrência duplicada.", "success");
       renderAll();
@@ -285,10 +342,11 @@ function resetOccurrenceForm() {
 
 function getFilteredOccurrences() {
   return state.occurrences.filter((entry) => {
+    const byPerson = !state.filters.person || entry.personName.toLowerCase().includes(state.filters.person);
     const byPerson = !state.filters.person || normalizeName(entry.person).includes(state.filters.person);
     const byType = !state.filters.type || entry.type === state.filters.type;
     const byDate = !state.filters.date || entry.date === state.filters.date;
-    return byPerson && byType && byDate;
+    return byPerson && byDate;
   });
 }
 
@@ -336,8 +394,8 @@ function renderDashboard() {
     return acc;
   }, {});
 
-  const topType = Object.entries(countByType).sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
-  ui.kpiTopType.textContent = topType;
+  const totalDuration = todayEntries.reduce((acc, entry) => acc + entry.durationMinutes, 0);
+  ui.kpiTopType.textContent = todayEntries.length ? `${Math.round(totalDuration / todayEntries.length)} min méd.` : "-";
 }
 
 function renderChart() {
@@ -348,11 +406,11 @@ function renderChart() {
   ctx.clearRect(0, 0, width, height);
 
   const counts = state.occurrences.reduce((acc, entry) => {
-    acc[entry.type] = (acc[entry.type] || 0) + 1;
+    acc[entry.personName] = (acc[entry.personName] || 0) + 1;
     return acc;
   }, {});
 
-  const data = Object.entries(counts);
+  const data = Object.entries(counts).slice(0, 5);
   if (!data.length) {
     ctx.fillStyle = "#6b7280";
     ctx.font = "16px sans-serif";
@@ -362,7 +420,7 @@ function renderChart() {
 
   const max = Math.max(...data.map(([, value]) => value), 1);
   const barWidth = 140;
-  const gap = 36;
+  const gap = 24;
 
   data.forEach(([label, value], index) => {
     const x = 40 + index * (barWidth + gap);
@@ -374,7 +432,7 @@ function renderChart() {
 
     ctx.fillStyle = "#1f2937";
     ctx.font = "14px sans-serif";
-    ctx.fillText(label, x, height - 24);
+    ctx.fillText(label.slice(0, 12), x, height - 24);
     ctx.fillText(String(value), x + 4, y - 8);
   });
 }
@@ -382,19 +440,23 @@ function renderChart() {
 function renderTable() {
   const rows = getFilteredOccurrences();
   if (!rows.length) {
-    ui.occurrencesBody.innerHTML = '<tr><td colspan="5">Nenhuma ocorrência encontrada.</td></tr>';
+    ui.occurrencesBody.innerHTML = '<tr><td colspan="4">Nenhuma ocorrência encontrada.</td></tr>';
     return;
   }
 
   ui.occurrencesBody.innerHTML = rows
     .map(
       (entry) => `
+      <tr data-id="${entry.occurrenceId}">
       <tr data-id="${entry.id}">
         <td>${escapeHtml(entry.person)} <small>(${escapeHtml(entry.personId)})</small></td>
         <td>${escapeHtml(entry.type)}</td>
         <td>${escapeHtml(entry.date)}</td>
-        <td>${escapeHtml(entry.notes || "-")}</td>
+        <td>${escapeHtml(entry.personName)} <small>(${escapeHtml(entry.personId)})</small></td>
+        <td>${escapeHtml(formatDurationLabel(entry.durationMinutes))}</td>
         <td class="actions-cell">
+          <button class="action-secondary" data-action="edit-occurrence" data-id="${entry.occurrenceId}" type="button">Editar</button>
+          <button class="action-danger" data-action="delete-occurrence" data-id="${entry.occurrenceId}" type="button">Excluir</button>
           <button class="action-secondary" data-action="edit-occurrence" data-id="${entry.id}" type="button">Editar</button>
           <button class="action-secondary" data-action="duplicate-occurrence" data-id="${entry.id}" type="button">Duplicar</button>
           <button class="action-danger" data-action="delete-occurrence" data-id="${entry.id}" type="button">Excluir</button>
@@ -403,6 +465,114 @@ function renderTable() {
     `,
     )
     .join("");
+}
+
+function renderPersonPreview() {
+  const rawName = ui.personName.value.trim();
+  if (!rawName) {
+    ui.personPreview.textContent = "";
+    return;
+  }
+
+  const key = rawName.toLowerCase();
+  const existing = state.people.get(key);
+  if (existing) {
+    ui.personPreview.textContent = `Pessoa existente: ${existing.personId}`;
+    return;
+  }
+
+  ui.personPreview.textContent = `Nova pessoa será criada com ID: ${getNextPersonId()}`;
+}
+
+function getOrCreatePerson(name) {
+  const key = name.toLowerCase();
+  const existing = state.people.get(key);
+  if (existing) {
+    if (existing.name !== name) {
+      existing.name = name;
+    }
+    return existing;
+  }
+
+  const person = {
+    personId: getNextPersonId(),
+    name,
+  };
+
+  state.people.set(key, person);
+  state.personSequence += 1;
+  return person;
+}
+
+function getNextPersonId() {
+  return `P${String(state.personSequence).padStart(4, "0")}`;
+}
+
+function clearFormMode() {
+  state.editingOccurrenceId = null;
+  ui.occurrenceForm.reset();
+  ui.personPreview.textContent = "";
+  ui.saveButton.textContent = "Salvar ocorrência";
+  ui.cancelEditButton.hidden = true;
+  [ui.personName, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
+    input.classList.remove("is-valid", "is-invalid"),
+  );
+}
+
+function parseDurationToMinutes(rawValue) {
+  const input = rawValue.trim().toLowerCase();
+
+  if (!input) {
+    return { valid: false, error: "Informe a duração." };
+  }
+
+  if (/^\d+$/.test(input)) {
+    const minutes = Number(input);
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+      return { valid: false, error: "Duração deve ser maior que zero." };
+    }
+    return { valid: true, value: minutes };
+  }
+
+  const colonMatch = input.match(/^(\d{1,3}):(\d{1,2})$/);
+  if (colonMatch) {
+    const hours = Number(colonMatch[1]);
+    const minutes = Number(colonMatch[2]);
+    if (minutes >= 60) {
+      return { valid: false, error: "No formato h:mm os minutos devem ficar entre 00 e 59." };
+    }
+    return { valid: true, value: hours * 60 + minutes };
+  }
+
+  const hmMatch = input.match(/^(\d+)h(?:\s*(\d+)m)?$/);
+  if (hmMatch) {
+    const hours = Number(hmMatch[1]);
+    const minutes = hmMatch[2] ? Number(hmMatch[2]) : 0;
+    if (minutes >= 60) {
+      return { valid: false, error: "No formato 'xh ym' os minutos devem ficar entre 0 e 59." };
+    }
+    if (hours === 0 && minutes === 0) {
+      return { valid: false, error: "Duração deve ser maior que zero." };
+    }
+    return { valid: true, value: hours * 60 + minutes };
+  }
+
+  return {
+    valid: false,
+    error: "Formato inválido. Use 90, 1:30 ou 1h 30m.",
+  };
+}
+
+function formatDurationLabel(durationMinutes) {
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  return `${String(hours).padStart(2, "0")}h${String(minutes).padStart(2, "0")}`;
+}
+
+function formatDurationInput(durationMinutes) {
+  const hours = Math.floor(durationMinutes / 60);
+  const minutes = durationMinutes % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
 function showToast(message, variant = "default") {

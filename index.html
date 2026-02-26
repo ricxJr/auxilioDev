@@ -34,6 +34,7 @@
             <label>
               Pessoa
               <input id="personName" name="personName" data-field="person-name" required />
+              <small data-role="person-preview"></small>
             </label>
             <p class="id-preview" data-role="person-id-preview">Próximo personId: P0001</p>
             <label>
@@ -49,13 +50,20 @@
               Data
               <input id="occurrenceDate" name="occurrenceDate" data-field="occurrence-date" type="date" required />
             </label>
-            <label class="span-2">
-              Observação
-              <textarea id="occurrenceNotes" name="occurrenceNotes" data-field="occurrence-notes" rows="3"></textarea>
+            <label>
+              Duração
+              <input
+                id="occurrenceDuration"
+                name="occurrenceDuration"
+                data-field="occurrence-duration"
+                placeholder="Ex: 90, 1:30, 1h 30m"
+                required
+              />
             </label>
           </div>
           <div class="form-actions">
             <button type="submit" data-action="save-occurrence">Salvar ocorrência</button>
+            <button type="button" class="action-secondary" data-action="cancel-edit" hidden>Cancelar edição</button>
           </div>
         </form>
       </section>
@@ -72,14 +80,14 @@
             <strong id="kpiUniquePeople" data-kpi="unique-people">0</strong>
           </article>
           <article>
-            <span>Tipo mais comum</span>
+            <span>Duração média</span>
             <strong id="kpiTopType" data-kpi="top-type">-</strong>
           </article>
         </div>
       </section>
 
       <section class="section card" id="chartSection" data-section="chart">
-        <h2>Ocorrências por Tipo</h2>
+        <h2>Ocorrências por Pessoa</h2>
         <div class="chart-scroll" data-role="chart-scroll">
           <canvas id="occurrenceChart" data-role="occurrence-chart" width="900" height="260"></canvas>
         </div>
@@ -93,15 +101,6 @@
             <input id="filterPerson" data-filter="person" placeholder="Nome" />
           </label>
           <label>
-            Tipo
-            <select id="filterType" data-filter="type">
-              <option value="">Todos</option>
-              <option value="Atraso">Atraso</option>
-              <option value="Falta">Falta</option>
-              <option value="Advertência">Advertência</option>
-            </select>
-          </label>
-          <label>
             Data
             <input id="filterDate" data-filter="date" type="date" />
           </label>
@@ -112,10 +111,9 @@
           <table id="occurrencesTable" data-role="occurrences-table">
             <thead>
               <tr>
-                <th>Pessoa</th>
-                <th>Tipo</th>
                 <th>Data</th>
-                <th>Observação</th>
+                <th>Pessoa (Nome + ID)</th>
+                <th>Duração (hh)</th>
                 <th>Ações</th>
               </tr>
             </thead>
