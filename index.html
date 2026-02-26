@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestor de Ocorrências</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="section card" id="csvHeader" data-section="csv-header">
+        <div class="header-status">
+          <h1>Gestor de Ocorrências</h1>
+          <p>
+            Status do CSV:
+            <strong id="csvStatus" data-role="csv-status">Desconectado</strong>
+          </p>
+          <p id="fallbackWarning" class="fallback-warning" data-role="fallback-warning" hidden>
+            Modo fallback ativo: a File System Access API não está disponível neste navegador.
+          </p>
+        </div>
+        <div class="header-actions" role="group" aria-label="Ações de CSV">
+          <button id="connectCsvBtn" data-action="connect-csv" type="button">Conectar CSV</button>
+          <button id="importCsvBtn" data-action="import-csv" type="button">Importar CSV</button>
+          <button id="exportCsvBtn" data-action="export-csv" type="button">Exportar CSV</button>
+        </div>
+      </header>
+
+      <section class="section card" id="occurrenceSection" data-section="occurrence-form">
+        <h2>Registrar ocorrência</h2>
+        <form id="occurrenceForm" data-role="occurrence-form" novalidate>
+          <div class="form-grid">
+            <label>
+              Pessoa
+              <input id="personName" name="personName" data-field="person-name" required />
+            </label>
+            <label>
+              Tipo
+              <select id="occurrenceType" name="occurrenceType" data-field="occurrence-type" required>
+                <option value="">Selecione</option>
+                <option value="Atraso">Atraso</option>
+                <option value="Falta">Falta</option>
+                <option value="Advertência">Advertência</option>
+              </select>
+            </label>
+            <label>
+              Data
+              <input id="occurrenceDate" name="occurrenceDate" data-field="occurrence-date" type="date" required />
+            </label>
+            <label class="span-2">
+              Observação
+              <textarea id="occurrenceNotes" name="occurrenceNotes" data-field="occurrence-notes" rows="3"></textarea>
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="submit" data-action="save-occurrence">Salvar ocorrência</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="section card" id="dailyDashboard" data-section="daily-dashboard">
+        <h2>Dashboard do Dia</h2>
+        <div class="dashboard-grid">
+          <article>
+            <span>Total hoje</span>
+            <strong id="kpiTotalToday" data-kpi="total-today">0</strong>
+          </article>
+          <article>
+            <span>Pessoas únicas</span>
+            <strong id="kpiUniquePeople" data-kpi="unique-people">0</strong>
+          </article>
+          <article>
+            <span>Tipo mais comum</span>
+            <strong id="kpiTopType" data-kpi="top-type">-</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="section card" id="chartSection" data-section="chart">
+        <h2>Ocorrências por Tipo</h2>
+        <div class="chart-scroll" data-role="chart-scroll">
+          <canvas id="occurrenceChart" data-role="occurrence-chart" width="900" height="260"></canvas>
+        </div>
+      </section>
+
+      <section class="section card" id="tableSection" data-section="occurrence-table">
+        <h2>Tabela de ocorrências</h2>
+        <div class="filters-row" data-role="filters-row">
+          <label>
+            Buscar pessoa
+            <input id="filterPerson" data-filter="person" placeholder="Nome" />
+          </label>
+          <label>
+            Tipo
+            <select id="filterType" data-filter="type">
+              <option value="">Todos</option>
+              <option value="Atraso">Atraso</option>
+              <option value="Falta">Falta</option>
+              <option value="Advertência">Advertência</option>
+            </select>
+          </label>
+          <label>
+            Data
+            <input id="filterDate" data-filter="date" type="date" />
+          </label>
+          <button type="button" id="clearFiltersBtn" data-action="clear-filters">Limpar filtros</button>
+        </div>
+
+        <div class="table-wrap">
+          <table id="occurrencesTable" data-role="occurrences-table">
+            <thead>
+              <tr>
+                <th>Pessoa</th>
+                <th>Tipo</th>
+                <th>Data</th>
+                <th>Observação</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="occurrencesTbody" data-role="occurrences-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="toastContainer" class="toast-container" data-role="toast-container" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
