@@ -72,18 +72,19 @@
         <h2>Dashboard do Dia</h2>
         <div class="dashboard-grid">
           <article>
-            <span>Total hoje</span>
+            <span>Total de minutos no dia</span>
             <strong id="kpiTotalToday" data-kpi="total-today">0</strong>
           </article>
           <article>
-            <span>Pessoas únicas</span>
+            <span>Pessoas distintas no dia</span>
             <strong id="kpiUniquePeople" data-kpi="unique-people">0</strong>
           </article>
           <article>
-            <span>Duração média</span>
+            <span>Total de ocorrências no dia</span>
             <strong id="kpiTopType" data-kpi="top-type">-</strong>
           </article>
         </div>
+        <div class="daily-people-list" data-role="daily-people-list"></div>
       </section>
 
       <section class="section card" id="chartSection" data-section="chart">
@@ -97,12 +98,25 @@
         <h2>Tabela de ocorrências</h2>
         <div class="filters-row" data-role="filters-row">
           <label>
-            Buscar pessoa
-            <input id="filterPerson" data-filter="person" placeholder="Nome" />
+            Pessoa
+            <select id="filterPerson" data-filter="person">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label>
+            Buscar por nome
+            <input id="filterNameSearch" data-filter="name-search" placeholder="Nome" />
           </label>
           <label>
             Data
             <input id="filterDate" data-filter="date" type="date" />
+          </label>
+          <label>
+            Ordenação
+            <select id="sortOrder" data-filter="sort-order">
+              <option value="date-desc">Data (mais recente)</option>
+              <option value="duration-desc">Duração (maior)</option>
+            </select>
           </label>
           <button type="button" id="clearFiltersBtn" data-action="clear-filters">Limpar filtros</button>
         </div>

@@ -18,8 +18,10 @@ const state = {
   occurrences: [],
   editingOccurrenceId: null,
   filters: {
-    person: "",
+    personId: "",
+    personNameSearch: "",
     date: "",
+    sort: "date-desc",
   },
   csv: {
     connected: false,
@@ -67,8 +69,12 @@ function cacheElements() {
   ui.chartCanvas = document.querySelector('[data-role="occurrence-chart"]');
 
   ui.filterPerson = document.querySelector('[data-filter="person"]');
+  ui.filterNameSearch = document.querySelector('[data-filter="name-search"]');
   ui.filterDate = document.querySelector('[data-filter="date"]');
+  ui.sortOrder = document.querySelector('[data-filter="sort-order"]');
   ui.clearFiltersBtn = document.querySelector('[data-action="clear-filters"]');
+
+  ui.dailyPeopleList = document.querySelector('[data-role="daily-people-list"]');
 
   ui.occurrencesBody = document.querySelector('[data-role="occurrences-body"]');
   ui.toastContainer = document.querySelector('[data-role="toast-container"]');
@@ -191,20 +197,34 @@ function bindOccurrenceForm() {
 }
 
 function bindFilters() {
-  ui.filterPerson.addEventListener("input", (event) => {
-    state.filters.person = normalizeName(event.target.value);
+  ui.filterPerson.addEventListener("change", (event) => {
+    state.filters.personId = event.target.value;
+    renderTable();
+  });
+
+  ui.filterNameSearch.addEventListener("input", (event) => {
+    state.filters.personNameSearch = normalizeName(event.target.value);
     renderTable();
   });
 
   ui.filterDate.addEventListener("change", (event) => {
     state.filters.date = event.target.value;
+    renderDashboard();
+    renderTable();
+  });
+
+  ui.sortOrder.addEventListener("change", (event) => {
+    state.filters.sort = event.target.value;
     renderTable();
   });
 
   ui.clearFiltersBtn.addEventListener("click", () => {
-    state.filters = { person: "", date: "" };
+    state.filters = { personId: "", personNameSearch: "", date: "", sort: "date-desc" };
     ui.filterPerson.value = "";
+    ui.filterNameSearch.value = "";
     ui.filterDate.value = "";
+    ui.sortOrder.value = "date-desc";
+    renderDashboard();
     renderTable();
   });
 }
@@ -325,17 +345,85 @@ function clearFormMode() {
 }
 
 function getFilteredOccurrences() {
-  return state.occurrences.filter((entry) => {
-    const byPerson = !state.filters.person || normalizeName(entry.personName).includes(state.filters.person);
+  const filtered = state.occurrences.filter((entry) => {
+    const byPerson = !state.filters.personId || entry.personId === state.filters.personId;
+    const byNameSearch =
+      !state.filters.personNameSearch || normalizeName(entry.personName).includes(state.filters.personNameSearch);
     const byDate = !state.filters.date || entry.date === state.filters.date;
-    return byPerson && byDate;
+    return byPerson && byNameSearch && byDate;
   });
+
+  return filtered.sort((a, b) => {
+    if (state.filters.sort === "duration-desc") {
+      const durationDiff = Number(b.durationMinutes || 0) - Number(a.durationMinutes || 0);
+      if (durationDiff !== 0) return durationDiff;
+    }
+
+    const dateDiff = String(b.date || "").localeCompare(String(a.date || ""));
+    if (dateDiff !== 0) return dateDiff;
+
+    return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+  });
+}
+
+
+function aggregateByDay(occurrences, selectedDate) {
+  const normalizedDate = selectedDate || "";
+  const scopedOccurrences = occurrences.filter((entry) => !normalizedDate || entry.date === normalizedDate);
+  const byPerson = aggregateByPerson(scopedOccurrences, "selected-day");
+
+  return {
+    selectedDate: normalizedDate,
+    totalMinutes: scopedOccurrences.reduce((total, entry) => total + Number(entry.durationMinutes || 0), 0),
+    totalDistinctPeople: byPerson.length,
+    totalOccurrences: scopedOccurrences.length,
+    byPerson,
+  };
+}
+
+function aggregateByPerson(occurrences, mode = "history") {
+  const normalizedMode = typeof mode === "string" ? { type: mode } : mode;
+  const scopedOccurrences =
+    normalizedMode.type === "selected-day"
+      ? occurrences.filter((entry) => !normalizedMode.selectedDate || entry.date === normalizedMode.selectedDate)
+      : occurrences;
+
+  const grouped = scopedOccurrences.reduce((acc, entry) => {
+    const key = `${entry.personId}::${entry.personName}`;
+    if (!acc[key]) {
+      acc[key] = {
+        personId: entry.personId,
+        personName: entry.personName,
+        occurrences: 0,
+        totalMinutes: 0,
+      };
+    }
+
+    acc[key].occurrences += 1;
+    acc[key].totalMinutes += Number(entry.durationMinutes || 0);
+    return acc;
+  }, {});
+
+  const ordered = Object.values(grouped).sort((a, b) => {
+    const diff = b.totalMinutes - a.totalMinutes;
+    if (diff !== 0) return diff;
+    return a.personName.localeCompare(b.personName);
+  });
+
+  return ordered;
+}
+
+function renderPersonFilterOptions() {
+  const people = [...state.people.values()].sort((a, b) => a.name.localeCompare(b.name));
+  ui.filterPerson.innerHTML = ['<option value="">Todas</option>', ...people.map((person) => `<option value="${escapeHtml(person.personId)}">${escapeHtml(person.name)} (${escapeHtml(person.personId)})</option>`)].join("");
+  ui.filterPerson.value = state.filters.personId;
 }
 
 function renderAll() {
   renderCsvStatus();
   renderCsvConflicts();
   renderPersonIdPreview();
+  renderPersonFilterOptions();
   renderDashboard();
   renderChart();
   renderTable();
@@ -365,14 +453,32 @@ function renderCsvConflicts() {
 }
 
 function renderDashboard() {
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = state.occurrences.filter((entry) => entry.date === today);
+  const selectedDate = state.filters.date || new Date().toISOString().slice(0, 10);
+  const dayAggregation = aggregateByDay(state.occurrences, selectedDate);
 
-  ui.kpiTotalToday.textContent = String(todayEntries.length);
-  ui.kpiUniquePeople.textContent = String(new Set(todayEntries.map((entry) => entry.personId)).size);
+  ui.kpiTotalToday.textContent = String(dayAggregation.totalMinutes);
+  ui.kpiUniquePeople.textContent = String(dayAggregation.totalDistinctPeople);
+  ui.kpiTopType.textContent = String(dayAggregation.totalOccurrences);
 
-  const totalDuration = todayEntries.reduce((acc, entry) => acc + entry.durationMinutes, 0);
-  ui.kpiTopType.textContent = todayEntries.length ? `${Math.round(totalDuration / todayEntries.length)} min méd.` : "-";
+  if (!dayAggregation.byPerson.length) {
+    ui.dailyPeopleList.innerHTML = '<p class="muted-inline">Nenhuma ocorrência para a data selecionada.</p>';
+    return;
+  }
+
+  ui.dailyPeopleList.innerHTML = `
+    <ul>
+      ${dayAggregation.byPerson
+        .map(
+          (person) => `
+            <li>
+              <strong>${escapeHtml(person.personName)} (${escapeHtml(person.personId)})</strong>
+              <span>${person.occurrences} ocorrência(s) · ${formatDurationLabel(person.totalMinutes)}</span>
+            </li>
+          `,
+        )
+        .join("")}
+    </ul>
+  `;
 }
 
 function renderChart() {
