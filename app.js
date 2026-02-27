@@ -2,6 +2,17 @@ const CSV_HEADERS = [
   "occurrenceId",
   "personId",
   "personName",
+  "occurrenceType",
+  "date",
+  "durationMinutes",
+  "createdAt",
+  "updatedAt",
+];
+
+const LEGACY_CSV_HEADERS = [
+  "occurrenceId",
+  "personId",
+  "personName",
   "date",
   "durationMinutes",
   "createdAt",
@@ -19,6 +30,7 @@ const state = {
   editingOccurrenceId: null,
   filters: {
     personId: "",
+    type: "",
     personNameSearch: "",
     date: "",
     sort: "date-desc",
@@ -60,8 +72,10 @@ function cacheElements() {
 
   ui.occurrenceForm = document.querySelector('[data-role="occurrence-form"]');
   ui.personName = document.querySelector('[data-field="person-name"]');
+  ui.peopleSuggestions = document.querySelector('[data-role="people-suggestions"]');
   ui.personPreview = document.querySelector('[data-role="person-preview"]');
   ui.personIdPreview = document.querySelector('[data-role="person-id-preview"]');
+  ui.occurrenceType = document.querySelector('[data-field="occurrence-type"]');
   ui.occurrenceDate = document.querySelector('[data-field="occurrence-date"]');
   ui.occurrenceDuration = document.querySelector('[data-field="occurrence-duration"]');
   ui.saveButton = document.querySelector('[data-action="save-occurrence"]');
@@ -70,6 +84,9 @@ function cacheElements() {
   ui.kpiTotalToday = document.querySelector('[data-kpi="total-today"]');
   ui.kpiUniquePeople = document.querySelector('[data-kpi="unique-people"]');
   ui.kpiTopType = document.querySelector('[data-kpi="top-type"]');
+  ui.kpiTotalGeneral = document.querySelector('[data-kpi="total-general"]');
+  ui.kpiUniqueGeneral = document.querySelector('[data-kpi="unique-general"]');
+  ui.kpiOccurrencesGeneral = document.querySelector('[data-kpi="occurrences-general"]');
 
   ui.chartCanvas = document.querySelector('[data-role="occurrence-chart"]');
   ui.chartScroll = document.querySelector('[data-role="chart-scroll"]');
@@ -77,25 +94,31 @@ function cacheElements() {
   ui.chartModeButtons = [...document.querySelectorAll('[data-action="chart-mode"]')];
 
   ui.filterPerson = document.querySelector('[data-filter="person"]');
+  ui.filterType = document.querySelector('[data-filter="type"]');
   ui.filterNameSearch = document.querySelector('[data-filter="name-search"]');
   ui.filterDate = document.querySelector('[data-filter="date"]');
   ui.sortOrder = document.querySelector('[data-filter="sort-order"]');
   ui.clearFiltersBtn = document.querySelector('[data-action="clear-filters"]');
 
   ui.dailyPeopleList = document.querySelector('[data-role="daily-people-list"]');
+  ui.generalPeopleList = document.querySelector('[data-role="general-people-list"]');
 
   ui.occurrencesBody = document.querySelector('[data-role="occurrences-body"]');
   ui.toastContainer = document.querySelector('[data-role="toast-container"]');
 }
 
 function supportsFsAccessApi() {
-  return typeof window.showOpenFilePicker === "function" && typeof window.showSaveFilePicker === "function";
+  const hasPicker = typeof window.showOpenFilePicker === "function" || typeof window.showSaveFilePicker === "function";
+  return Boolean(window.isSecureContext && hasPicker);
 }
 
 function setupFallbackMode() {
   if (!supportsFsAccessApi()) {
     state.csv.mode = "fallback";
     ui.fallbackWarning.hidden = false;
+    ui.fallbackWarning.textContent = window.isSecureContext
+      ? "Modo fallback ativo: seu navegador não expõe File System Access API nesta sessão."
+      : "Modo fallback ativo: abra em contexto seguro (https:// ou http://localhost). Em file:// a File System Access API pode não estar disponível.";
     ui.connectCsvBtn.disabled = true;
   }
 }
@@ -152,6 +175,7 @@ function bindOccurrenceForm() {
     const durationResult = parseDurationToMinutes(ui.occurrenceDuration.value);
     const requiredFields = [
       { input: ui.personName, valid: Boolean(ui.personName.value.trim()) },
+      { input: ui.occurrenceType, valid: Boolean(ui.occurrenceType.value.trim()) },
       { input: ui.occurrenceDate, valid: Boolean(ui.occurrenceDate.value.trim()) },
       { input: ui.occurrenceDuration, valid: durationResult.valid },
     ];
@@ -180,6 +204,7 @@ function bindOccurrenceForm() {
 
       occurrence.personId = person.personId;
       occurrence.personName = person.name;
+      occurrence.occurrenceType = ui.occurrenceType.value;
       occurrence.date = ui.occurrenceDate.value;
       occurrence.durationMinutes = durationResult.value;
       occurrence.updatedAt = now;
@@ -193,6 +218,7 @@ function bindOccurrenceForm() {
       occurrenceId: generateOccurrenceId(),
       personId: person.personId,
       personName: person.name,
+      occurrenceType: ui.occurrenceType.value,
       date: ui.occurrenceDate.value,
       durationMinutes: durationResult.value,
       createdAt: now,
@@ -207,6 +233,13 @@ function bindOccurrenceForm() {
 function bindFilters() {
   ui.filterPerson.addEventListener("change", (event) => {
     state.filters.personId = event.target.value;
+    renderTable();
+    renderChart();
+  });
+
+  ui.filterType.addEventListener("change", (event) => {
+    state.filters.type = event.target.value;
+    renderDashboard();
     renderTable();
     renderChart();
   });
@@ -231,8 +264,9 @@ function bindFilters() {
   });
 
   ui.clearFiltersBtn.addEventListener("click", () => {
-    state.filters = { personId: "", personNameSearch: "", date: "", sort: "date-desc" };
+    state.filters = { personId: "", type: "", personNameSearch: "", date: "", sort: "date-desc" };
     ui.filterPerson.value = "";
+    ui.filterType.value = "";
     ui.filterNameSearch.value = "";
     ui.filterDate.value = "";
     ui.sortOrder.value = "date-desc";
@@ -301,6 +335,7 @@ function bindTableActions() {
 
       state.editingOccurrenceId = item.occurrenceId;
       ui.personName.value = item.personName;
+      ui.occurrenceType.value = item.occurrenceType || "";
       ui.occurrenceDate.value = item.date;
       ui.occurrenceDuration.value = formatDurationInput(item.durationMinutes);
       ui.saveButton.textContent = "Salvar edição";
@@ -388,7 +423,7 @@ function clearFormMode() {
   ui.occurrenceForm.reset();
   ui.saveButton.textContent = "Salvar ocorrência";
   ui.cancelEditButton.hidden = true;
-  [ui.personName, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
+  [ui.personName, ui.occurrenceType, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
     input.classList.remove("is-valid", "is-invalid"),
   );
   renderPersonPreview();
@@ -398,10 +433,11 @@ function clearFormMode() {
 function getFilteredOccurrences() {
   const filtered = state.occurrences.filter((entry) => {
     const byPerson = !state.filters.personId || entry.personId === state.filters.personId;
+    const byType = !state.filters.type || (entry.occurrenceType || "") === state.filters.type;
     const byNameSearch =
       !state.filters.personNameSearch || normalizeName(entry.personName).includes(state.filters.personNameSearch);
     const byDate = !state.filters.date || entry.date === state.filters.date;
-    return byPerson && byNameSearch && byDate;
+    return byPerson && byType && byNameSearch && byDate;
   });
 
   return filtered.sort((a, b) => {
@@ -468,9 +504,10 @@ function aggregateByPerson(occurrences, mode = "history") {
 function getChartScopedOccurrences() {
   return state.occurrences.filter((entry) => {
     const byPerson = !state.filters.personId || entry.personId === state.filters.personId;
+    const byType = !state.filters.type || (entry.occurrenceType || "") === state.filters.type;
     const byNameSearch =
       !state.filters.personNameSearch || normalizeName(entry.personName).includes(state.filters.personNameSearch);
-    return byPerson && byNameSearch;
+    return byPerson && byType && byNameSearch;
   });
 }
 
@@ -480,11 +517,26 @@ function renderPersonFilterOptions() {
   ui.filterPerson.value = state.filters.personId;
 }
 
+function renderTypeFilterOptions() {
+  const types = [...new Set(state.occurrences.map((item) => item.occurrenceType).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  ui.filterType.innerHTML = ['<option value="">Todos</option>', ...types.map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)].join("");
+  ui.filterType.value = state.filters.type;
+}
+
+function renderPeopleSuggestions() {
+  const people = [...state.people.values()].sort((a, b) => a.name.localeCompare(b.name));
+  ui.peopleSuggestions.innerHTML = people.map((person) => `<option value="${escapeHtml(person.name)}"></option>`).join("");
+}
+
 function renderAll() {
   renderCsvStatus();
   renderCsvConflicts();
   renderPersonIdPreview();
   renderPersonFilterOptions();
+  renderTypeFilterOptions();
+  renderPeopleSuggestions();
   renderDashboard();
   renderChart();
   renderTable();
@@ -515,11 +567,16 @@ function renderCsvConflicts() {
 
 function renderDashboard() {
   const selectedDate = state.filters.date || new Date().toISOString().slice(0, 10);
-  const dayAggregation = aggregateByDay(state.occurrences, selectedDate);
+  const source = getChartScopedOccurrences();
+  const dayAggregation = aggregateByDay(source, selectedDate);
+  const generalAggregation = aggregateByDay(source, "");
 
   ui.kpiTotalToday.textContent = String(dayAggregation.totalMinutes);
   ui.kpiUniquePeople.textContent = String(dayAggregation.totalDistinctPeople);
   ui.kpiTopType.textContent = String(dayAggregation.totalOccurrences);
+  ui.kpiTotalGeneral.textContent = String(generalAggregation.totalMinutes);
+  ui.kpiUniqueGeneral.textContent = String(generalAggregation.totalDistinctPeople);
+  ui.kpiOccurrencesGeneral.textContent = String(generalAggregation.totalOccurrences);
 
   if (!dayAggregation.byPerson.length) {
     ui.dailyPeopleList.innerHTML = '<p class="muted-inline">Nenhuma ocorrência para a data selecionada.</p>';
@@ -529,6 +586,26 @@ function renderDashboard() {
   ui.dailyPeopleList.innerHTML = `
     <ul>
       ${dayAggregation.byPerson
+        .map(
+          (person) => `
+            <li>
+              <strong>${escapeHtml(person.personName)} (${escapeHtml(person.personId)})</strong>
+              <span>${person.occurrences} ocorrência(s) · ${formatDurationLabel(person.totalMinutes)}</span>
+            </li>
+          `,
+        )
+        .join("")}
+    </ul>
+  `;
+
+  if (!generalAggregation.byPerson.length) {
+    ui.generalPeopleList.innerHTML = '<p class="muted-inline">Nenhuma ocorrência no histórico atual.</p>';
+    return;
+  }
+
+  ui.generalPeopleList.innerHTML = `
+    <ul>
+      ${generalAggregation.byPerson
         .map(
           (person) => `
             <li>
@@ -643,7 +720,7 @@ function formatDurationClock(durationMinutes) {
 function renderTable() {
   const rows = getFilteredOccurrences();
   if (!rows.length) {
-    ui.occurrencesBody.innerHTML = '<tr><td colspan="4">Nenhuma ocorrência encontrada.</td></tr>';
+    ui.occurrencesBody.innerHTML = '<tr><td colspan="5">Nenhuma ocorrência encontrada.</td></tr>';
     return;
   }
 
@@ -653,6 +730,7 @@ function renderTable() {
       <tr>
         <td>${escapeHtml(entry.date)}</td>
         <td>${escapeHtml(entry.personName)} <small>(${escapeHtml(entry.personId)})</small></td>
+        <td>${escapeHtml(entry.occurrenceType || "-")}</td>
         <td>${escapeHtml(formatDurationLabel(entry.durationMinutes))}</td>
         <td class="actions-cell">
           <button class="action-secondary" data-action="edit-occurrence" data-id="${entry.occurrenceId}" type="button">Editar</button>
@@ -720,7 +798,10 @@ function parseCSV(text) {
 
   const [header, ...body] = rows;
   const normalizedHeader = header.map((item) => item.trim());
-  if (normalizedHeader.join(",") !== CSV_HEADERS.join(",")) {
+  const headerJoined = normalizedHeader.join(",");
+  const isCurrent = headerJoined === CSV_HEADERS.join(",");
+  const isLegacy = headerJoined === LEGACY_CSV_HEADERS.join(",");
+  if (!isCurrent && !isLegacy) {
     throw new Error("Cabeçalho CSV inválido.");
   }
 
@@ -730,10 +811,11 @@ function parseCSV(text) {
       occurrenceId: columns[0] || generateOccurrenceId(),
       personId: columns[1] || "",
       personName: columns[2] || "",
-      date: columns[3] || "",
-      durationMinutes: Number(columns[4] || 0),
-      createdAt: columns[5] || new Date().toISOString(),
-      updatedAt: columns[6] || new Date().toISOString(),
+      occurrenceType: isCurrent ? columns[3] || "" : "Não informado",
+      date: isCurrent ? columns[4] || "" : columns[3] || "",
+      durationMinutes: Number(isCurrent ? columns[5] || 0 : columns[4] || 0),
+      createdAt: isCurrent ? columns[6] || new Date().toISOString() : columns[5] || new Date().toISOString(),
+      updatedAt: isCurrent ? columns[7] || new Date().toISOString() : columns[6] || new Date().toISOString(),
     }));
 }
 
@@ -751,6 +833,7 @@ function serializeCSV(occurrences) {
       item.occurrenceId,
       item.personId,
       item.personName,
+      item.occurrenceType || "",
       item.date,
       Number(item.durationMinutes || 0),
       item.createdAt,
@@ -834,10 +917,21 @@ async function connectCsvFile() {
   if (!supportsFsAccessApi()) return;
 
   try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: "ocorrencias.csv",
-      types: [{ description: "Arquivo CSV", accept: { "text/csv": [".csv"] } }],
-    });
+    let handle;
+    if (typeof window.showOpenFilePicker === "function") {
+      const [selectedHandle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{ description: "Arquivo CSV", accept: { "text/csv": [".csv"] } }],
+      });
+      handle = selectedHandle;
+    } else if (typeof window.showSaveFilePicker === "function") {
+      handle = await window.showSaveFilePicker({
+        suggestedName: "ocorrencias.csv",
+        types: [{ description: "Arquivo CSV", accept: { "text/csv": [".csv"] } }],
+      });
+    } else {
+      throw new Error("File picker indisponível neste navegador/contexto.");
+    }
 
     state.csv.fileHandle = handle;
     state.csv.connected = true;
