@@ -53,6 +53,9 @@ const ui = {};
 
 document.addEventListener("DOMContentLoaded", async () => {
   cacheElements();
+
+  ui.occurrenceDate.value = new Date().toISOString().slice(0, 10);
+
   setupFallbackMode();
   bindCsvActions();
   bindOccurrenceForm();
@@ -465,6 +468,7 @@ function clearFormMode() {
   [ui.personName, ui.occurrenceType, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
     input.classList.remove("is-valid", "is-invalid"),
   );
+  ui.occurrenceDate.value = new Date().toISOString().slice(0, 10);
   renderPersonPreview();
   renderPersonIdPreview();
 }
