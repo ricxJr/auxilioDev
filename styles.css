@@ -13,6 +13,22 @@
   --warning-text: #8a6116;
 }
 
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --card: #111827;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --primary: #60a5fa;
+  --primary-dark: #3b82f6;
+  --border: #253247;
+  --success: #34d399;
+  --danger: #f87171;
+  --warning-bg: #3a2d14;
+  --warning-text: #fcd34d;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -37,7 +53,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
-  box-shadow: 0 6px 16px rgb(0 0 0 / 5%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 12%);
 }
 
 h1,
@@ -76,7 +92,7 @@ textarea {
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   color: var(--text);
 }
 
@@ -91,17 +107,17 @@ input:invalid:not(:focus):not(:placeholder-shown),
 select:invalid:not(:focus),
 textarea:invalid:not(:focus) {
   border-color: var(--danger);
-  background: #fff5f5;
+  background: color-mix(in oklab, var(--danger) 10%, var(--card));
 }
 
 .is-valid {
   border-color: var(--success) !important;
-  background: #f0fff9;
+  background: color-mix(in oklab, var(--success) 12%, var(--card));
 }
 
 .is-invalid {
   border-color: var(--danger) !important;
-  background: #fff5f5;
+  background: color-mix(in oklab, var(--danger) 10%, var(--card));
 }
 
 .form-grid {
@@ -144,7 +160,7 @@ textarea:invalid:not(:focus) {
 }
 
 .chart-controls .action-secondary {
-  border: 1px solid #cdd8eb;
+  border: 1px solid var(--border);
 }
 
 .chart-controls .action-secondary.is-active {
@@ -196,13 +212,13 @@ td {
 }
 
 .action-secondary {
-  background: #e7ecf6;
-  color: #1d3a78;
+  background: color-mix(in oklab, var(--primary) 14%, var(--card));
+  color: var(--text);
 }
 
 .action-danger {
-  background: #fee2e2;
-  color: #991b1b;
+  background: color-mix(in oklab, var(--danger) 18%, var(--card));
+  color: var(--danger);
 }
 
 .fallback-warning {

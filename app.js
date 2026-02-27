@@ -46,6 +46,7 @@ const state = {
     mode: "selected-day",
     bars: [],
   },
+  theme: "light",
 };
 
 const ui = {};
@@ -58,6 +59,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindFilters();
   bindChartInteractions();
   bindTableActions();
+  bindThemeActions();
+  applyInitialTheme();
   await tryReconnectCsvFile();
   renderAll();
 });
@@ -69,6 +72,7 @@ function cacheElements() {
   ui.connectCsvBtn = document.querySelector('[data-action="connect-csv"]');
   ui.importCsvBtn = document.querySelector('[data-action="import-csv"]');
   ui.exportCsvBtn = document.querySelector('[data-action="export-csv"]');
+  ui.toggleThemeBtn = document.querySelector('[data-action="toggle-theme"]');
 
   ui.occurrenceForm = document.querySelector('[data-role="occurrence-form"]');
   ui.personName = document.querySelector('[data-field="person-name"]');
@@ -105,6 +109,41 @@ function cacheElements() {
 
   ui.occurrencesBody = document.querySelector('[data-role="occurrences-body"]');
   ui.toastContainer = document.querySelector('[data-role="toast-container"]');
+}
+
+
+function bindThemeActions() {
+  if (!ui.toggleThemeBtn) return;
+
+  ui.toggleThemeBtn.addEventListener("click", () => {
+    const nextTheme = state.theme === "dark" ? "light" : "dark";
+    applyTheme(nextTheme);
+    showToast(nextTheme === "dark" ? "Tema escuro ativado." : "Tema claro ativado.");
+    renderChart();
+  });
+}
+
+function applyInitialTheme() {
+  const stored = window.localStorage.getItem("auxilio-theme");
+  const systemPrefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const initial = stored === "dark" || stored === "light" ? stored : systemPrefersDark ? "dark" : "light";
+  applyTheme(initial, false);
+}
+
+function applyTheme(theme, persist = true) {
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  if (ui.toggleThemeBtn) {
+    ui.toggleThemeBtn.textContent = theme === "dark" ? "Tema claro" : "Tema escuro";
+  }
+
+  if (persist) {
+    window.localStorage.setItem("auxilio-theme", theme);
+  }
+}
+
+function getThemeColor(token) {
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
 }
 
 function supportsFsAccessApi() {
@@ -636,7 +675,7 @@ function renderChart() {
   if (!data.length) {
     ui.chartCanvas.width = 900;
     ctx.clearRect(0, 0, ui.chartCanvas.width, height);
-    ctx.fillStyle = "#6b7280";
+    ctx.fillStyle = getThemeColor("--muted");
     ctx.font = "16px sans-serif";
     ctx.fillText("Sem dados para o gráfico.", 20, 40);
     state.chart.bars = [];
@@ -657,8 +696,8 @@ function renderChart() {
   const maxMinutes = Math.max(...data.map((item) => item.totalMinutes), 1);
   const yTicks = 5;
 
-  ctx.strokeStyle = "#dbe2ea";
-  ctx.fillStyle = "#6b7280";
+  ctx.strokeStyle = getThemeColor("--border");
+  ctx.fillStyle = getThemeColor("--muted");
   ctx.font = "12px sans-serif";
 
   for (let i = 0; i <= yTicks; i += 1) {
@@ -672,7 +711,7 @@ function renderChart() {
     ctx.fillText(formatAxisDuration(value), 8, y + 4);
   }
 
-  ctx.strokeStyle = "#94a3b8";
+  ctx.strokeStyle = getThemeColor("--muted");
   ctx.beginPath();
   ctx.moveTo(margin.left, margin.top);
   ctx.lineTo(margin.left, height - margin.bottom);
@@ -685,13 +724,13 @@ function renderChart() {
     const y = height - margin.bottom - barHeight;
     const label = `${person.personName}(${person.personId})`;
 
-    ctx.fillStyle = "#2f6df6";
+    ctx.fillStyle = getThemeColor("--primary");
     ctx.fillRect(x, y, barWidth, barHeight);
 
     ctx.save();
     ctx.translate(x + barWidth / 2, height - margin.bottom + 12);
     ctx.rotate(-Math.PI / 4);
-    ctx.fillStyle = "#1f2937";
+    ctx.fillStyle = getThemeColor("--text");
     ctx.font = "12px sans-serif";
     ctx.textAlign = "right";
     ctx.fillText(label.slice(0, 24), 0, 0);
