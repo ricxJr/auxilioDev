@@ -33,9 +33,10 @@
           <div class="form-grid">
             <label>
               Pessoa
-              <input id="personName" name="personName" data-field="person-name" required />
+              <input id="personName" name="personName" data-field="person-name" list="peopleSuggestions" required />
               <small data-role="person-preview"></small>
             </label>
+            <datalist id="peopleSuggestions" data-role="people-suggestions"></datalist>
             <p class="id-preview" data-role="person-id-preview">Próximo personId: P0001</p>
             <label>
               Tipo
@@ -87,6 +88,25 @@
         <div class="daily-people-list" data-role="daily-people-list"></div>
       </section>
 
+      <section class="section card" id="generalDashboard" data-section="general-dashboard">
+        <h2>Dashboard Geral</h2>
+        <div class="dashboard-grid">
+          <article>
+            <span>Total de minutos no histórico</span>
+            <strong data-kpi="total-general">0</strong>
+          </article>
+          <article>
+            <span>Pessoas distintas no histórico</span>
+            <strong data-kpi="unique-general">0</strong>
+          </article>
+          <article>
+            <span>Total de ocorrências no histórico</span>
+            <strong data-kpi="occurrences-general">0</strong>
+          </article>
+        </div>
+        <div class="daily-people-list" data-role="general-people-list"></div>
+      </section>
+
       <section class="section card" id="chartSection" data-section="chart">
         <h2>Ocorrências por Pessoa</h2>
         <div class="chart-controls" role="group" aria-label="Modo do gráfico">
@@ -113,6 +133,12 @@
             </select>
           </label>
           <label>
+            Tipo
+            <select id="filterType" data-filter="type">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
             Buscar por nome
             <input id="filterNameSearch" data-filter="name-search" placeholder="Nome" />
           </label>
@@ -136,6 +162,7 @@
               <tr>
                 <th>Data</th>
                 <th>Pessoa (Nome + ID)</th>
+                <th>Tipo</th>
                 <th>Duração (hh)</th>
                 <th>Ações</th>
               </tr>
