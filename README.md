@@ -1,23 +1,23 @@
-# auxilioDev — Gestor de Ocorrências
+# auxilioDev — Gestor de Auxílios
 
 ## Nome do projeto
-**auxilioDev (Gestor de Ocorrências)**
+**auxilioDev (Gestor de Auxílios)**
 
 ## Descrição
-Aplicação web front-end (HTML/CSS/JS puro) para registrar, visualizar, filtrar e editar ocorrências por pessoa, com persistência em arquivo CSV.
+Aplicação web front-end (HTML/CSS/JS puro) para registrar, visualizar, filtrar e editar auxílios por pessoa, com persistência em arquivo CSV.
 
 O app funciona em dois modos:
 - **Conectado**: usa **File System Access API** para ler/gravar diretamente um CSV escolhido pelo usuário.
 - **Fallback**: quando a API não está disponível, permite **importar/exportar CSV** manualmente.
 
 ## Funcionalidades
-- Cadastro de ocorrência com:
+- Cadastro de auxílio com:
   - Nome da pessoa
   - Data
   - Duração (normalizada para minutos)
 - Reaproveitamento de pessoa existente por nome normalizado (case-insensitive, sem acento e com espaços normalizados).
-- Edição e exclusão de ocorrências.
-- Dashboard diário com KPIs (total de minutos, pessoas distintas e total de ocorrências).
+- Edição e exclusão de auxílios.
+- Dashboard diário com KPIs (total de minutos, pessoas distintas e total de auxílios).
 - Gráfico por pessoa (dia selecionado ou histórico completo).
 - Tabela com filtros por pessoa, nome, data e ordenação.
 - Persistência em CSV com cabeçalho validado.
@@ -43,7 +43,7 @@ Quando o navegador suporta File System Access API:
 2. Selecione (ou crie) um arquivo `.csv`.
 3. O app passa para modo conectado e salva o **file handle** no **IndexedDB**.
 4. Nas próximas aberturas, o app tenta reconectar automaticamente ao mesmo arquivo, pedindo permissão quando necessário.
-5. Alterações nas ocorrências são persistidas no arquivo conectado.
+5. Alterações nas auxílios são persistidas no arquivo conectado.
 
 ## Como usar fallback import/export
 Quando a File System Access API não está disponível (ou se você preferir fluxo manual):
@@ -67,10 +67,10 @@ occurrenceId,personId,personName,date,durationMinutes,createdAt,updatedAt
 ```
 
 ### Descrição das colunas
-1. `occurrenceId`: identificador único da ocorrência.
+1. `occurrenceId`: identificador único da auxílio.
 2. `personId`: identificador da pessoa (ex.: `P0001`).
 3. `personName`: nome exibido da pessoa.
-4. `date`: data da ocorrência (formato `YYYY-MM-DD`).
+4. `date`: data da auxílio (formato `YYYY-MM-DD`).
 5. `durationMinutes`: duração persistida em **minutos inteiros**.
 6. `createdAt`: timestamp ISO de criação.
 7. `updatedAt`: timestamp ISO da última atualização.

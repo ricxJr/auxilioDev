@@ -198,7 +198,7 @@ function bindOccurrenceForm() {
       const occurrence = state.occurrences.find((item) => item.occurrenceId === state.editingOccurrenceId);
       if (!occurrence) {
         clearFormMode();
-        showToast("Ocorrência para edição não encontrada.", "error");
+        showToast("Auxílio para edição não encontrada.", "error");
         return;
       }
 
@@ -210,7 +210,7 @@ function bindOccurrenceForm() {
       occurrence.updatedAt = now;
 
       clearFormMode();
-      await persistOccurrencesWithFeedback("Ocorrência atualizada.");
+      await persistOccurrencesWithFeedback("Auxílio atualizada.");
       return;
     }
 
@@ -226,7 +226,7 @@ function bindOccurrenceForm() {
     });
 
     clearFormMode();
-    await persistOccurrencesWithFeedback("Ocorrência registrada.");
+    await persistOccurrencesWithFeedback("Auxílio registrada.");
   });
 }
 
@@ -322,10 +322,10 @@ function bindTableActions() {
     const rowId = actionButton.dataset.id;
 
     if (actionButton.dataset.action === "delete-occurrence") {
-      if (!window.confirm("Deseja realmente excluir esta ocorrência?")) return;
+      if (!window.confirm("Deseja realmente excluir esta auxílio?")) return;
       state.occurrences = state.occurrences.filter((item) => item.occurrenceId !== rowId);
       if (state.editingOccurrenceId === rowId) clearFormMode();
-      await persistOccurrencesWithFeedback("Ocorrência removida.");
+      await persistOccurrencesWithFeedback("Auxílio removida.");
       return;
     }
 
@@ -421,7 +421,7 @@ function renderPersonPreview() {
 function clearFormMode() {
   state.editingOccurrenceId = null;
   ui.occurrenceForm.reset();
-  ui.saveButton.textContent = "Salvar ocorrência";
+  ui.saveButton.textContent = "Salvar auxílio";
   ui.cancelEditButton.hidden = true;
   [ui.personName, ui.occurrenceType, ui.occurrenceDate, ui.occurrenceDuration].forEach((input) =>
     input.classList.remove("is-valid", "is-invalid"),
@@ -579,7 +579,7 @@ function renderDashboard() {
   ui.kpiOccurrencesGeneral.textContent = String(generalAggregation.totalOccurrences);
 
   if (!dayAggregation.byPerson.length) {
-    ui.dailyPeopleList.innerHTML = '<p class="muted-inline">Nenhuma ocorrência para a data selecionada.</p>';
+    ui.dailyPeopleList.innerHTML = '<p class="muted-inline">Nenhuma auxílio para a data selecionada.</p>';
     return;
   }
 
@@ -590,7 +590,7 @@ function renderDashboard() {
           (person) => `
             <li>
               <strong>${escapeHtml(person.personName)} (${escapeHtml(person.personId)})</strong>
-              <span>${person.occurrences} ocorrência(s) · ${formatDurationLabel(person.totalMinutes)}</span>
+              <span>${person.occurrences} auxílio(s) · ${formatDurationLabel(person.totalMinutes)}</span>
             </li>
           `,
         )
@@ -599,7 +599,7 @@ function renderDashboard() {
   `;
 
   if (!generalAggregation.byPerson.length) {
-    ui.generalPeopleList.innerHTML = '<p class="muted-inline">Nenhuma ocorrência no histórico atual.</p>';
+    ui.generalPeopleList.innerHTML = '<p class="muted-inline">Nenhuma auxílio no histórico atual.</p>';
     return;
   }
 
@@ -610,7 +610,7 @@ function renderDashboard() {
           (person) => `
             <li>
               <strong>${escapeHtml(person.personName)} (${escapeHtml(person.personId)})</strong>
-              <span>${person.occurrences} ocorrência(s) · ${formatDurationLabel(person.totalMinutes)}</span>
+              <span>${person.occurrences} auxílio(s) · ${formatDurationLabel(person.totalMinutes)}</span>
             </li>
           `,
         )
@@ -720,7 +720,7 @@ function formatDurationClock(durationMinutes) {
 function renderTable() {
   const rows = getFilteredOccurrences();
   if (!rows.length) {
-    ui.occurrencesBody.innerHTML = '<tr><td colspan="5">Nenhuma ocorrência encontrada.</td></tr>';
+    ui.occurrencesBody.innerHTML = '<tr><td colspan="5">Nenhuma auxílio encontrada.</td></tr>';
     return;
   }
 

@@ -28,7 +28,7 @@ Boas práticas de manutenção para o AI Codex neste projeto.
 
 ## 5) UX mínima consistente
 - Sempre informar sucesso/erro com toast simples.
-- Confirmar exclusão de ocorrência.
+- Confirmar exclusão de auxílio.
 - Mostrar status de persistência (conectado/fallback) de forma visível.
 - Mensagens de erro devem indicar como corrigir a entrada.
 

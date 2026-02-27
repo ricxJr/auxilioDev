@@ -3,20 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestor de Ocorrências</title>
+    <title>Gestor de Auxílio</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <header class="section card" id="csvHeader" data-section="csv-header">
         <div class="header-status">
-          <h1>Gestor de Ocorrências</h1>
+          <h1>Gestor de Auxílio</h1>
           <p>
             Status do CSV:
             <strong id="csvStatus" data-role="csv-status">Desconectado</strong>
-          </p>
-          <p id="fallbackWarning" class="fallback-warning" data-role="fallback-warning" hidden>
-            Modo fallback ativo: a File System Access API não está disponível neste navegador.
           </p>
         </div>
         <div class="header-actions" role="group" aria-label="Ações de CSV">
@@ -28,7 +25,7 @@
       </header>
 
       <section class="section card" id="occurrenceSection" data-section="occurrence-form">
-        <h2>Registrar ocorrência</h2>
+        <h2>Registrar Auxílio</h2>
         <form id="occurrenceForm" data-role="occurrence-form" novalidate>
           <div class="form-grid">
             <label>
@@ -63,7 +60,7 @@
             </label>
           </div>
           <div class="form-actions">
-            <button type="submit" data-action="save-occurrence">Salvar ocorrência</button>
+            <button type="submit" data-action="save-occurrence">Salvar Auxílio</button>
             <button type="button" class="action-secondary" data-action="cancel-edit" hidden>Cancelar edição</button>
           </div>
         </form>
@@ -81,7 +78,7 @@
             <strong id="kpiUniquePeople" data-kpi="unique-people">0</strong>
           </article>
           <article>
-            <span>Total de ocorrências no dia</span>
+            <span>Total de Auxílios no dia</span>
             <strong id="kpiTopType" data-kpi="top-type">-</strong>
           </article>
         </div>
@@ -100,7 +97,7 @@
             <strong data-kpi="unique-general">0</strong>
           </article>
           <article>
-            <span>Total de ocorrências no histórico</span>
+            <span>Total de Auxílios no histórico</span>
             <strong data-kpi="occurrences-general">0</strong>
           </article>
         </div>
@@ -108,7 +105,7 @@
       </section>
 
       <section class="section card" id="chartSection" data-section="chart">
-        <h2>Ocorrências por Pessoa</h2>
+        <h2>Auxílios por Pessoa</h2>
         <div class="chart-controls" role="group" aria-label="Modo do gráfico">
           <button type="button" class="action-secondary is-active" data-action="chart-mode" data-mode="selected-day">
             Dia selecionado
@@ -124,7 +121,7 @@
       </section>
 
       <section class="section card" id="tableSection" data-section="occurrence-table">
-        <h2>Tabela de ocorrências</h2>
+        <h2>Tabela de Auxílios</h2>
         <div class="filters-row" data-role="filters-row">
           <label>
             Pessoa

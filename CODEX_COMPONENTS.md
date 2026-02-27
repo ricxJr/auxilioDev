@@ -12,9 +12,9 @@ Este documento descreve os principais componentes da aplicação para facilitar 
    - Exibe se está em modo conectado (FS API) ou fallback (import/export).
    - Ações principais: conectar CSV, importar, exportar.
 
-2. **Formulário de Ocorrência**
+2. **Formulário de Auxílio**
    - Entrada de nome com sugestões.
-   - Data da ocorrência (padrão: hoje).
+   - Data da auxílio (padrão: hoje).
    - Duração (normalizada para minutos internamente).
    - Exibe ID de pessoa associado (existente ou próximo ID previsto).
 
@@ -28,7 +28,7 @@ Este documento descreve os principais componentes da aplicação para facilitar 
    - Modo diário (padrão) e histórico.
    - Tooltip ao passar o mouse.
 
-5. **Tabela de Ocorrências**
+5. **Tabela de Auxílios**
    - Colunas: data, pessoa (nome + ID), duração, ações.
    - Filtros por data, pessoa e texto.
    - Ações de editar/excluir.
@@ -47,7 +47,7 @@ state = {
 
 ### Fluxo padrão
 1. Carrega CSV (conectado ou importado).
-2. Reconstrói pessoas/ocorrências em memória.
+2. Reconstrói pessoas/auxílios em memória.
 3. Renderiza formulário, dashboard, gráfico e tabela.
 4. Ao CRUD, atualiza estado e persiste no CSV.
 5. Re-renderiza UI derivada do estado.
